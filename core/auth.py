@@ -78,9 +78,18 @@ def existe_algum_usuario() -> bool:
 
 
 def criar_usuario(
-    email: str, nome: str, senha: str, nome_workspace: str | None = None
+    email: str,
+    nome: str,
+    senha: str,
+    nome_workspace: str | None = None,
+    semear: bool = True,
 ) -> int:
-    """Cria o usuário junto com a carteira pessoal dele. Devolve o id do usuário."""
+    """Cria o usuário junto com a carteira pessoal dele. Devolve o id do usuário.
+
+    `semear=False` serve à migração de um banco 0.1.x: lá a carteira vai adotar
+    as categorias e contas que já existiam, e semear por cima criaria um par
+    duplicado de cada uma.
+    """
     email = normalizar_email(email)
     if not email or "@" not in email:
         raise ErroDeAuth("Informe um e-mail válido.")
@@ -100,7 +109,8 @@ def criar_usuario(
         s.add(ws)
         s.flush()
         s.add(Membro(usuario_id=usuario.id, workspace_id=ws.id, papel="dono"))
-        semear_workspace(s, ws.id)
+        if semear:
+            semear_workspace(s, ws.id)
         s.commit()
         return usuario.id
 

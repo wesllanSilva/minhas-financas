@@ -18,9 +18,17 @@ CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
 
-html, body, [class*="st-"], button, input, textarea, select {
+html, body, .stApp, button, input, textarea, select {
     font-family: 'IBM Plex Sans', system-ui, sans-serif;
 }
+
+/* Os ícones do Streamlit são ligatures da fonte Material Symbols: o span
+   contém o nome do ícone em texto puro. Se a fonte for trocada, a ligature
+   não acontece e o nome ("dashboard", "settings") vaza por cima do rótulo. */
+[data-testid="stIconMaterial"] {
+    font-family: 'Material Symbols Rounded' !important;
+}
+
 .stApp { background: #F1F3F2; }
 [data-testid="stSidebar"] { background: #FFFFFF; border-right: 1px solid #DFE5E2; }
 [data-testid="stHeader"] { background: transparent; }

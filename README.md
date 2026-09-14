@@ -1,8 +1,12 @@
 # Minhas Finanças
 
-App pessoal de controle financeiro em Python + Streamlit, para substituir a planilha
+App de controle financeiro em Python + Streamlit, para substituir a planilha
 mensal. Lançamentos, cartões, orçamento por categoria, investimentos e objetivos —
 tudo num banco só, sem precisar duplicar nada quando vira o mês.
+
+Cada pessoa entra com a própria conta e tem as próprias carteiras. Dá para manter
+uma carteira sua, uma da sua esposa e uma compartilhada para as contas da casa —
+uma não enxerga a outra, a não ser que você libere o acesso.
 
 ## O que tem dentro
 
@@ -14,7 +18,7 @@ tudo num banco só, sem precisar duplicar nada quando vira o mês.
 | Cartões | Fatura de cada cartão, comparada com o mês passado |
 | Investimentos | Aportes, resgates, rendimentos, composição da carteira e evolução |
 | Objetivos | Quanto falta para cada meta e quanto guardar por mês |
-| Configurações | Contas, cartões, categorias, importação de CSV e backup |
+| Configurações | Contas, cartões, categorias, carteiras e acesso, importação de CSV e backup |
 
 Detalhes que resolvem dores da planilha:
 
@@ -78,13 +82,18 @@ mas pausa o projeto depois de uma semana parado e você tem que reativar na mão
 
    ```toml
    DATABASE_URL = "postgresql://usuario:senha@ep-algo-123.us-east-2.aws.neon.tech/neondb?sslmode=require"
-   app_password = "uma-senha-sua"
    ```
 
 5. **Deploy**. Em poucos minutos você tem uma URL `https://algo.streamlit.app`.
 
-O app abre pedindo a senha, então dá para deixar o repositório público sem expor os
-seus dados. Se preferir, o plano grátis também permite **um** app privado.
+O app abre na tela de login, então dá para deixar o repositório público sem expor
+os seus dados — o que está no GitHub é o código, não o banco. Abra a URL e crie a
+sua conta: a primeira conta criada vira a dona da primeira carteira.
+
+Como qualquer pessoa com o link vê a tela de cadastro, crie a sua conta (e a de
+quem mais vai usar) assim que o deploy terminar. Se preferir não deixar o
+cadastro aberto, o plano grátis permite **um** app privado, liberado só para os
+e-mails que você listar.
 
 Depois disso, todo `git push` atualiza o app sozinho.
 
@@ -100,8 +109,8 @@ O mesmo código roda em Render, Railway ou Fly. O comando de start é:
 streamlit run app.py --server.port $PORT --server.address 0.0.0.0
 ```
 
-Defina as variáveis de ambiente `DATABASE_URL` e `APP_PASSWORD` no painel da
-plataforma — o app lê as duas de lá quando não encontra os secrets do Streamlit.
+Defina a variável de ambiente `DATABASE_URL` no painel da plataforma — o app a lê
+de lá quando não encontra os secrets do Streamlit.
 
 ## Trazer os dados da planilha
 
@@ -120,29 +129,61 @@ Não precisa limpar os valores antes: `R$ 1.592,00`, `1.592`, `1592.00` e `(85,0
 Vale importar um mês primeiro para conferir se ficou do jeito certo. Tem um botão
 para baixar o modelo de CSV na mesma tela, e outro para baixar um backup de tudo.
 
+## Contas e carteiras
+
+No primeiro acesso o app pede para criar a sua conta — quem cria vira dono da
+primeira carteira. A partir daí:
+
+- **Nova pessoa**: ela mesma cria a conta dela na aba *Criar conta* da tela de
+  login. Nasce com uma carteira pessoal, vazia e só dela.
+- **Carteira compartilhada**: em *Configurações → Carteiras e acesso*, crie a
+  carteira (por exemplo "Contas da casa") e libere o e-mail da outra pessoa.
+  Quem tem acesso vê e lança na mesma carteira.
+- **Trocar de carteira**: pelo seletor na barra lateral, quando você participa
+  de mais de uma.
+
+O login continua valendo por 30 dias no mesmo navegador, então atualizar a
+página não derruba ninguém. *Sair* encerra a sessão na hora, e trocar a senha
+desconecta os outros navegadores.
+
 ## Estrutura
 
 ```
-app.py                    navegação e trava de senha
+app.py                    navegação, login e definição da carteira ativa
 core/models.py            tabelas (SQLAlchemy)
 core/db.py                conexão: SQLite local ou Postgres via DATABASE_URL
+core/auth.py              senhas (bcrypt), carteiras, membros e sessões
+core/escopo.py            qual carteira está ativa — filtra tudo que o repo lê
+core/cookies.py           cookie de sessão (é o que sobrevive ao refresh)
 core/repo.py              todas as consultas e regras (parcelas, fatura, orçamento)
 core/forms.py             formulário de lançamento
-core/ui.py                tema, formatação em R$, seletor de mês
+core/ui.py                tema, formatação em R$, tela de login, seletor de mês
+core/versao.py            versão mostrada na tela de login
 views/                    uma tela por arquivo
-testes.py                 confere as regras e abre todas as telas
+testes/                   suíte pytest
 ```
 
-Depois de mexer no código, vale rodar:
+Depois de mexer no código:
 
 ```bash
-python testes.py
+pytest
 ```
 
-Ele cria um banco descartável em `data/testes.db`, testa as regras (parcelas,
-contas fixas, competência da fatura, orçamento, importação) e abre cada tela para
-ver se nenhuma quebrou. Não encosta no seu banco de verdade.
+Roda contra um SQLite descartável numa pasta temporária — não encosta no seu
+banco. Cobre as regras (parcelas, contas fixas, competência da fatura,
+orçamento, importação), o login, e abre cada tela para ver se nenhuma quebrou.
+
+`testes/test_isolamento.py` é o mais importante: garante que uma carteira não
+enxerga nem altera a outra. Um erro ali não trava nada — só faz uma pessoa ver o
+dinheiro da outra.
 
 Para mudar as cores, mexa em `core/ui.py` e `.streamlit/config.toml`.
 Para adicionar um campo, comece por `core/models.py` — as tabelas são criadas
-sozinhas na primeira execução.
+sozinhas na primeira execução. Tabela nova com dado financeiro precisa de
+`workspace_id` e de entrar em `COM_ESCOPO`, ou os testes reclamam.
+
+## Versão
+
+A versão fica em `core/versao.py` e aparece na tela de login. Cada correção ou
+funcionalidade nova sobe o número (semântico) e ganha uma linha no
+[CHANGELOG.md](CHANGELOG.md), no mesmo commit.

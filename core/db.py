@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from .models import Base, Categoria, Conta
@@ -72,7 +72,6 @@ def get_engine():
             kwargs["connect_args"] = {"check_same_thread": False}
         _engine = create_engine(url, **kwargs)
         Base.metadata.create_all(_engine)
-        _semear(_engine)
     return _engine
 
 
@@ -80,16 +79,33 @@ def get_session() -> Session:
     return sessionmaker(bind=get_engine(), expire_on_commit=False, future=True)()
 
 
-def _semear(engine) -> None:
-    """Cria categorias e uma conta padrão no primeiro uso."""
-    with sessionmaker(bind=engine, future=True)() as s:
-        if s.scalar(select(Categoria).limit(1)) is None:
-            s.add_all(
-                Categoria(nome=n, tipo=t, cor=c) for n, t, c in CATEGORIAS_PADRAO
-            )
-        if s.scalar(select(Conta).limit(1)) is None:
-            s.add(Conta(nome="Conta corrente", tipo="Conta corrente", saldo_inicial=0))
-        s.commit()
+def reiniciar_engine() -> None:
+    """Esquece a conexão atual. Usado pelos testes ao trocar de banco."""
+    global _engine
+    if _engine is not None:
+        _engine.dispose()
+    _engine = None
+
+
+def semear_workspace(s: Session, workspace_id: int) -> None:
+    """Dá a uma carteira nova as categorias padrão e uma conta para começar.
+
+    Recebe a sessão aberta em vez de abrir a sua: quem chama está criando o
+    workspace na mesma transação, e semear fora dela deixaria uma carteira pela
+    metade caso o commit falhasse.
+    """
+    s.add_all(
+        Categoria(workspace_id=workspace_id, nome=n, tipo=t, cor=c)
+        for n, t, c in CATEGORIAS_PADRAO
+    )
+    s.add(
+        Conta(
+            workspace_id=workspace_id,
+            nome="Conta corrente",
+            tipo="Conta corrente",
+            saldo_inicial=0,
+        )
+    )
 
 
 def usando_sqlite() -> bool:

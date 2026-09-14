@@ -1,4 +1,4 @@
-"""Cadastros, importação da planilha e backup."""
+"""Cadastros, carteiras, importação da planilha e backup."""
 from __future__ import annotations
 
 import io
@@ -6,12 +6,12 @@ import io
 import pandas as pd
 import streamlit as st
 
-from core import db, repo, ui
+from core import auth, db, escopo, repo, ui
 
 st.title("Configurações")
 
-aba_contas, aba_cartoes, aba_cats, aba_dados = st.tabs(
-    ["Contas", "Cartões", "Categorias", "Importar e exportar"]
+aba_contas, aba_cartoes, aba_cats, aba_carteiras, aba_dados = st.tabs(
+    ["Contas", "Cartões", "Categorias", "Carteiras e acesso", "Importar e exportar"]
 )
 
 # --------------------------------------------------------------------------- #
@@ -113,6 +113,85 @@ with aba_cats:
                 st.error("Dê um nome à categoria.")
 
     st.caption("Remover uma categoria só a esconde: os lançamentos antigos continuam intactos.")
+
+# --------------------------------------------------------------------------- #
+with aba_carteiras:
+    usuario = st.session_state.get("_usuario") or {}
+    usuario_id = usuario.get("id")
+    ws_atual = escopo.atual_ou_none()
+    carteiras = auth.workspaces_de(usuario_id) if usuario_id else []
+    eu_sou_dono = any(
+        c["id"] == ws_atual and c["papel"] == "dono" for c in carteiras
+    )
+
+    st.subheader("Suas carteiras")
+    st.caption(
+        "Cada carteira tem contas, lançamentos e metas próprios. Use uma para você, "
+        "outra para a sua esposa e uma terceira compartilhada para as contas da casa."
+    )
+    for c in carteiras:
+        marca = " · **aberta agora**" if c["id"] == ws_atual else ""
+        st.write(f"**{c['nome']}** — {c['papel']}{marca}")
+
+    with st.form("nova_carteira", clear_on_submit=True):
+        nome_nova = st.text_input("Nome da nova carteira", placeholder="Contas da casa")
+        if st.form_submit_button("Criar carteira", type="primary"):
+            try:
+                auth.criar_workspace(nome_nova, usuario_id)
+                st.success("Carteira criada. Troque por ela na barra lateral.")
+                st.rerun()
+            except auth.ErroDeAuth as erro:
+                st.error(str(erro))
+
+    st.divider()
+    st.subheader("Quem tem acesso a esta carteira")
+    for m in auth.membros_de(ws_atual) if ws_atual else []:
+        c1, c2, c3 = st.columns([3, 2, 1])
+        c1.write(f"**{m['nome']}**")
+        c2.caption(f"{m['email']} · {m['papel']}")
+        if eu_sou_dono and m["usuario_id"] != usuario_id:
+            if c3.button("Remover", key=f"delmembro{m['usuario_id']}"):
+                try:
+                    auth.remover_membro(ws_atual, m["usuario_id"], usuario_id)
+                    st.rerun()
+                except auth.ErroDeAuth as erro:
+                    st.error(str(erro))
+
+    if eu_sou_dono:
+        with st.form("convidar", clear_on_submit=True):
+            st.markdown("**Dar acesso a alguém**")
+            email_convite = st.text_input("E-mail de quem já tem conta no app")
+            if st.form_submit_button("Liberar acesso"):
+                try:
+                    auth.adicionar_membro(ws_atual, email_convite, usuario_id)
+                    st.success("Acesso liberado.")
+                    st.rerun()
+                except auth.ErroDeAuth as erro:
+                    st.error(str(erro))
+        st.caption(
+            "A pessoa precisa criar a conta dela primeiro, na tela de login. "
+            "Depois é só liberar o e-mail aqui."
+        )
+    else:
+        st.caption("Só o dono da carteira pode convidar ou remover alguém.")
+
+    st.divider()
+    st.subheader("Sua senha")
+    with st.form("trocar_senha", clear_on_submit=True):
+        atual_txt = st.text_input("Senha atual", type="password")
+        nova = st.text_input("Nova senha", type="password")
+        repetir = st.text_input("Repita a nova senha", type="password")
+        if st.form_submit_button("Trocar senha"):
+            if nova != repetir:
+                st.error("As duas senhas não são iguais.")
+            else:
+                try:
+                    auth.trocar_senha(usuario_id, atual_txt, nova)
+                    st.success(
+                        "Senha trocada. Os outros navegadores conectados foram desconectados."
+                    )
+                except auth.ErroDeAuth as erro:
+                    st.error(str(erro))
 
 # --------------------------------------------------------------------------- #
 with aba_dados:

@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 import datetime as dt
-import os
 
 import streamlit as st
 
-from . import repo
+from . import auth, cookies, escopo, repo
+from .versao import __version__
 
 VERDE = "#0F5D4A"
 VERMELHO = "#A8352A"
@@ -68,6 +68,10 @@ h3 { font-size: 1.02rem; font-weight: 600; color: #16241F; }
 div[data-testid="stMetricValue"] { font-variant-numeric: tabular-nums; }
 .stDataFrame { font-variant-numeric: tabular-nums; }
 footer, #MainMenu { visibility: hidden; }
+
+/* O componente que grava o cookie não desenha nada, mas ainda ocupa a altura
+   de um bloco. Sem isto sobra um buraco no topo da página. */
+iframe[title="streamlit.components.v1.html"][height="0"] { display: none; }
 </style>
 """
 
@@ -83,30 +87,169 @@ def configurar_pagina(titulo: str, icone: str = "💰") -> None:
     st.markdown(CSS, unsafe_allow_html=True)
 
 
-def checar_senha() -> bool:
-    """Trava simples por senha. Se `app_password` não estiver nos secrets, libera."""
-    senha_certa = os.environ.get("APP_PASSWORD")
-    if not senha_certa:
-        try:
-            senha_certa = st.secrets.get("app_password")
-        except Exception:
-            senha_certa = None
-    if not senha_certa:
-        return True
-    if st.session_state.get("_liberado"):
-        return True
+# --------------------------------------------------------------------------- #
+# Login
+# --------------------------------------------------------------------------- #
 
+
+def usuario_logado() -> dict | None:
+    """Quem está usando o app agora, ou None.
+
+    Tenta a memória da sessão primeiro; se ela estiver vazia (foi um F5), cai
+    no cookie e restaura a partir dele.
+    """
+    if st.session_state.get("_usuario"):
+        return st.session_state["_usuario"]
+
+    usuario = auth.usuario_da_sessao(cookies.ler())
+    if usuario is None:
+        return None
+
+    dados = {"id": usuario.id, "nome": usuario.nome, "email": usuario.email}
+    st.session_state["_usuario"] = dados
+    return dados
+
+
+def _entrar(usuario, lembrar: bool = True) -> None:
+    st.session_state["_usuario"] = {
+        "id": usuario.id,
+        "nome": usuario.nome,
+        "email": usuario.email,
+    }
+    if lembrar:
+        token = auth.abrir_sessao(usuario.id)
+        st.session_state["_token"] = token
+        cookies.gravar(token, auth.DIAS_DE_SESSAO)
+
+
+def sair() -> None:
+    auth.fechar_sessao(st.session_state.get("_token") or cookies.ler())
+    cookies.apagar()
+    for chave in ("_usuario", "_token", escopo.CHAVE, "competencia"):
+        st.session_state.pop(chave, None)
+
+
+def exigir_login() -> bool:
+    """Garante alguém logado e um workspace ativo. False = a tela de login está aberta."""
+    usuario = usuario_logado()
+    if usuario is None:
+        _tela_de_login()
+        return False
+    return _definir_workspace(usuario)
+
+
+def _rodape_versao() -> None:
+    st.markdown(
+        f"<div style='margin-top:26px;font-size:.76rem;color:#8A9691'>"
+        f"Minhas Finanças · versão {__version__}</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def _tela_de_login() -> None:
     st.title("Minhas Finanças")
-    st.caption("Digite a senha para abrir seus dados.")
-    with st.form("login"):
-        digitada = st.text_input("Senha", type="password")
-        if st.form_submit_button("Entrar"):
-            if digitada == senha_certa:
-                st.session_state["_liberado"] = True
+
+    if not auth.existe_algum_usuario():
+        st.caption("Primeiro acesso: crie a sua conta.")
+        _form_cadastro(primeiro=True)
+        _rodape_versao()
+        return
+
+    st.caption("Entre para ver seus lançamentos.")
+    entrar, criar = st.tabs(["Entrar", "Criar conta"])
+
+    with entrar:
+        with st.form("login"):
+            email = st.text_input("E-mail")
+            senha = st.text_input("Senha", type="password")
+            lembrar = st.checkbox("Continuar conectado neste navegador", value=True)
+            if st.form_submit_button("Entrar", width="stretch"):
+                usuario = auth.autenticar(email, senha)
+                if usuario is None:
+                    st.error("E-mail ou senha incorretos.")
+                else:
+                    _entrar(usuario, lembrar)
+                    st.rerun()
+
+    with criar:
+        _form_cadastro()
+
+    _rodape_versao()
+
+
+def _form_cadastro(primeiro: bool = False) -> None:
+    with st.form("cadastro"):
+        nome = st.text_input("Seu nome")
+        email = st.text_input("E-mail", key="cad_email")
+        senha = st.text_input("Senha", type="password", key="cad_senha")
+        repetir = st.text_input("Repita a senha", type="password")
+        rotulo = "Criar minha conta" if primeiro else "Criar conta"
+        if st.form_submit_button(rotulo, width="stretch"):
+            if senha != repetir:
+                st.error("As duas senhas não são iguais.")
+                return
+            try:
+                auth.criar_usuario(email, nome, senha)
+            except auth.ErroDeAuth as erro:
+                st.error(str(erro))
+                return
+            usuario = auth.autenticar(email, senha)
+            if usuario:
+                _entrar(usuario)
                 st.rerun()
-            else:
-                st.error("Senha incorreta. Tente de novo.")
-    return False
+
+
+def _definir_workspace(usuario: dict) -> bool:
+    """Escolhe a carteira ativa e a publica no escopo. Roda a cada rerun."""
+    carteiras = auth.workspaces_de(usuario["id"])
+    if not carteiras:  # só acontece se alguém apagar o vínculo no banco
+        st.error("Sua conta não está ligada a nenhuma carteira. Fale com o dono.")
+        if st.button("Sair"):
+            sair()
+            st.rerun()
+        return False
+
+    ids = [c["id"] for c in carteiras]
+    atual = escopo.atual_ou_none()
+    # Confere a cada rerun: o vínculo pode ter sido removido desde o login.
+    if atual not in ids or not auth.pode_acessar(usuario["id"], atual):
+        atual = ids[0]
+    escopo.definir(atual)
+    st.session_state["_carteiras"] = carteiras
+    return True
+
+
+def barra_lateral_conta() -> None:
+    """Seletor de carteira e botão de sair. Chamado no topo de cada página."""
+    usuario = st.session_state.get("_usuario")
+    if not usuario:
+        return
+    carteiras = st.session_state.get("_carteiras") or []
+
+    with st.sidebar:
+        if len(carteiras) > 1:
+            ids = [c["id"] for c in carteiras]
+            nomes = {c["id"]: c["nome"] for c in carteiras}
+            atual = escopo.atual_ou_none()
+            escolhida = st.selectbox(
+                "Carteira",
+                ids,
+                index=ids.index(atual) if atual in ids else 0,
+                format_func=lambda i: nomes[i],
+                key="_seletor_carteira",
+            )
+            if escolhida != atual and auth.pode_acessar(usuario["id"], escolhida):
+                escopo.definir(escolhida)
+                st.rerun()
+        elif carteiras:
+            st.caption(carteiras[0]["nome"])
+
+        esq, dir_ = st.columns([3, 2])
+        esq.caption(usuario["nome"])
+        if dir_.button("Sair", key="_sair", width="stretch"):
+            sair()
+            st.rerun()
+        st.divider()
 
 
 def seletor_mes() -> dt.date:

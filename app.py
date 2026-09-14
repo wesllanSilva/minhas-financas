@@ -10,8 +10,12 @@ from core import ui
 
 ui.configurar_pagina("Minhas Finanças", "💰")
 
-if not ui.checar_senha():
+# Precisa vir antes da navegação: é aqui que o workspace ativo é definido, e
+# nenhuma página pode consultar o banco sem ele.
+if not ui.exigir_login():
     st.stop()
+
+ui.barra_lateral_conta()
 
 navegacao = st.navigation(
     {

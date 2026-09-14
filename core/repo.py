@@ -1,4 +1,10 @@
-"""Consultas e regras de negócio. Tudo que mexe no banco passa por aqui."""
+"""Consultas e regras de negócio. Tudo que mexe no banco passa por aqui.
+
+Toda consulta é filtrada pelo workspace ativo (`core/escopo.py`). As telas não
+passam `workspace_id` — não teriam como esquecer, e não têm como forjar. Buscas
+por id usam `_buscar`, que confere o dono antes de devolver o registro: sem
+isso, bastaria adivinhar um id para editar o lançamento de outra pessoa.
+"""
 from __future__ import annotations
 
 import datetime as dt
@@ -9,6 +15,7 @@ from decimal import Decimal
 import pandas as pd
 from sqlalchemy import delete, func, select
 
+from . import escopo
 from .db import get_session
 from .models import (
     Cartao,
@@ -20,6 +27,36 @@ from .models import (
     Orcamento,
     Transacao,
 )
+
+# --------------------------------------------------------------------------- #
+# Escopo
+# --------------------------------------------------------------------------- #
+
+
+def _ws() -> int:
+    """Workspace ativo. Levanta `SemWorkspace` se não houver — nunca devolve tudo."""
+    return escopo.atual()
+
+
+def _buscar(s, Model, id_: int | None):
+    """Carrega um registro só se ele for do workspace ativo.
+
+    Devolve None quando o id não existe *ou* é de outra carteira. As duas
+    situações são a mesma coisa do ponto de vista de quem pediu: aquele
+    registro não existe para essa pessoa.
+    """
+    if id_ is None:
+        return None
+    obj = s.get(Model, id_)
+    if obj is None or obj.workspace_id != _ws():
+        return None
+    return obj
+
+
+def _existe(s, Model, id_: int | None) -> int | None:
+    """Valida uma chave estrangeira apontada pela tela. Devolve o id ou None."""
+    return None if _buscar(s, Model, id_) is None else id_
+
 
 # --------------------------------------------------------------------------- #
 # Datas
@@ -117,7 +154,7 @@ def parse_valor(bruto) -> float:
 
 def listar_categorias(tipo: str | None = None, apenas_ativas: bool = True) -> pd.DataFrame:
     with get_session() as s:
-        q = select(Categoria)
+        q = select(Categoria).where(Categoria.workspace_id == _ws())
         if tipo:
             q = q.where(Categoria.tipo == tipo)
         if apenas_ativas:
@@ -131,7 +168,9 @@ def listar_categorias(tipo: str | None = None, apenas_ativas: bool = True) -> pd
 
 def salvar_categoria(nome: str, tipo: str, cor: str, id_: int | None = None) -> None:
     with get_session() as s:
-        obj = s.get(Categoria, id_) if id_ else Categoria()
+        obj = _buscar(s, Categoria, id_) if id_ else Categoria(workspace_id=_ws())
+        if obj is None:
+            return
         obj.nome, obj.tipo, obj.cor = nome.strip(), tipo, cor
         s.add(obj)
         s.commit()
@@ -139,7 +178,7 @@ def salvar_categoria(nome: str, tipo: str, cor: str, id_: int | None = None) -> 
 
 def arquivar_categoria(id_: int) -> None:
     with get_session() as s:
-        obj = s.get(Categoria, id_)
+        obj = _buscar(s, Categoria, id_)
         if obj:
             obj.ativa = False
             s.commit()
@@ -147,7 +186,7 @@ def arquivar_categoria(id_: int) -> None:
 
 def listar_contas(apenas_ativas: bool = True) -> pd.DataFrame:
     with get_session() as s:
-        q = select(Conta)
+        q = select(Conta).where(Conta.workspace_id == _ws())
         if apenas_ativas:
             q = q.where(Conta.ativa.is_(True))
         linhas = s.scalars(q.order_by(Conta.nome)).all()
@@ -162,7 +201,9 @@ def listar_contas(apenas_ativas: bool = True) -> pd.DataFrame:
 
 def salvar_conta(nome: str, tipo: str, saldo_inicial: float, id_: int | None = None) -> None:
     with get_session() as s:
-        obj = s.get(Conta, id_) if id_ else Conta()
+        obj = _buscar(s, Conta, id_) if id_ else Conta(workspace_id=_ws())
+        if obj is None:
+            return
         obj.nome, obj.tipo, obj.saldo_inicial = nome.strip(), tipo, saldo_inicial
         s.add(obj)
         s.commit()
@@ -170,7 +211,7 @@ def salvar_conta(nome: str, tipo: str, saldo_inicial: float, id_: int | None = N
 
 def listar_cartoes(apenas_ativos: bool = True) -> pd.DataFrame:
     with get_session() as s:
-        q = select(Cartao)
+        q = select(Cartao).where(Cartao.workspace_id == _ws())
         if apenas_ativos:
             q = q.where(Cartao.ativo.is_(True))
         linhas = s.scalars(q.order_by(Cartao.nome)).all()
@@ -199,7 +240,9 @@ def salvar_cartao(
     id_: int | None = None,
 ) -> None:
     with get_session() as s:
-        obj = s.get(Cartao, id_) if id_ else Cartao()
+        obj = _buscar(s, Cartao, id_) if id_ else Cartao(workspace_id=_ws())
+        if obj is None:
+            return
         obj.nome, obj.banco, obj.limite = nome.strip(), banco.strip(), limite
         obj.dia_fechamento, obj.dia_vencimento = dia_fechamento, dia_vencimento
         s.add(obj)
@@ -208,7 +251,7 @@ def salvar_cartao(
 
 def excluir_cartao(id_: int) -> None:
     with get_session() as s:
-        obj = s.get(Cartao, id_)
+        obj = _buscar(s, Cartao, id_)
         if obj:
             obj.ativo = False
             s.commit()
@@ -239,10 +282,19 @@ def salvar_transacao(
     `parcelas` divide o valor em N meses; `repetir_meses` repete o valor cheio
     em N meses (contas fixas). Use um ou outro.
     """
+    ws = _ws()
     with get_session() as s:
+        # Categoria, conta e cartão vêm da tela como ids soltos. Se apontarem
+        # para outra carteira viram None em vez de criar um vínculo cruzado.
+        categoria_id = _existe(s, Categoria, categoria_id)
+        conta_id = _existe(s, Conta, conta_id)
+        cartao = _buscar(s, Cartao, cartao_id)
+        cartao_id = cartao.id if cartao else None
+
         if id_:
-            obj = s.get(Transacao, id_)
-            cartao = s.get(Cartao, cartao_id) if cartao_id else None
+            obj = _buscar(s, Transacao, id_)
+            if obj is None:
+                return
             obj.data, obj.descricao, obj.valor = data, descricao.strip(), valor
             obj.tipo, obj.categoria_id = tipo, categoria_id
             obj.conta_id, obj.cartao_id = conta_id, cartao_id
@@ -251,7 +303,6 @@ def salvar_transacao(
             s.commit()
             return
 
-        cartao = s.get(Cartao, cartao_id) if cartao_id else None
         n = max(int(parcelas), 1)
         repeticoes = max(int(repetir_meses), 1)
         if n > 1:
@@ -264,6 +315,7 @@ def salvar_transacao(
             data_i = somar_meses(data, i)
             s.add(
                 Transacao(
+                    workspace_id=ws,
                     data=data_i,
                     competencia=competencia_de(data_i, cartao),
                     descricao=descricao.strip(),
@@ -284,11 +336,15 @@ def salvar_transacao(
 
 def excluir_transacao(id_: int, grupo_inteiro: bool = False) -> None:
     with get_session() as s:
-        obj = s.get(Transacao, id_)
+        obj = _buscar(s, Transacao, id_)
         if obj is None:
             return
         if grupo_inteiro and obj.grupo:
-            s.execute(delete(Transacao).where(Transacao.grupo == obj.grupo))
+            s.execute(
+                delete(Transacao).where(
+                    Transacao.grupo == obj.grupo, Transacao.workspace_id == _ws()
+                )
+            )
         else:
             s.delete(obj)
         s.commit()
@@ -296,7 +352,7 @@ def excluir_transacao(id_: int, grupo_inteiro: bool = False) -> None:
 
 def alternar_pago(id_: int) -> None:
     with get_session() as s:
-        obj = s.get(Transacao, id_)
+        obj = _buscar(s, Transacao, id_)
         if obj:
             obj.pago = not obj.pago
             s.commit()
@@ -313,7 +369,7 @@ def transacoes(
         "parcela", "grupo", "observacao",
     ]
     with get_session() as s:
-        q = select(Transacao)
+        q = select(Transacao).where(Transacao.workspace_id == _ws())
         if competencia is not None:
             q = q.where(Transacao.competencia == competencia)
         if tipo:
@@ -364,18 +420,28 @@ def resumo_mes(competencia: dt.date) -> dict:
 
 def saldo_total() -> float:
     """Saldo em conta: saldo inicial + receitas pagas - despesas pagas (fora cartão)."""
+    ws = _ws()
     with get_session() as s:
-        inicial = _f(s.scalar(select(func.sum(Conta.saldo_inicial)).where(Conta.ativa.is_(True))))
+        inicial = _f(
+            s.scalar(
+                select(func.sum(Conta.saldo_inicial)).where(
+                    Conta.workspace_id == ws, Conta.ativa.is_(True)
+                )
+            )
+        )
         entradas = _f(
             s.scalar(
                 select(func.sum(Transacao.valor)).where(
-                    Transacao.tipo == "receita", Transacao.pago.is_(True)
+                    Transacao.workspace_id == ws,
+                    Transacao.tipo == "receita",
+                    Transacao.pago.is_(True),
                 )
             )
         )
         saidas = _f(
             s.scalar(
                 select(func.sum(Transacao.valor)).where(
+                    Transacao.workspace_id == ws,
                     Transacao.tipo == "despesa",
                     Transacao.pago.is_(True),
                     Transacao.cartao_id.is_(None),
@@ -396,7 +462,11 @@ def serie_mensal(meses: int = 12, ate: dt.date | None = None) -> pd.DataFrame:
                 Transacao.tipo,
                 func.sum(Transacao.valor),
             )
-            .where(Transacao.competencia >= inicio, Transacao.competencia <= fim)
+            .where(
+                Transacao.workspace_id == _ws(),
+                Transacao.competencia >= inicio,
+                Transacao.competencia <= fim,
+            )
             .group_by(Transacao.competencia, Transacao.tipo)
         ).all()
 
@@ -423,21 +493,32 @@ def serie_mensal(meses: int = 12, ate: dt.date | None = None) -> pd.DataFrame:
 
 def orcamento_mes(competencia: dt.date) -> pd.DataFrame:
     """Planejado x gasto por categoria de despesa."""
+    ws = _ws()
     with get_session() as s:
         metas = {
             o.categoria_id: _f(o.valor)
             for o in s.scalars(
-                select(Orcamento).where(Orcamento.competencia == competencia)
+                select(Orcamento).where(
+                    Orcamento.workspace_id == ws, Orcamento.competencia == competencia
+                )
             ).all()
         }
         cats = s.scalars(
             select(Categoria)
-            .where(Categoria.tipo == "despesa", Categoria.ativa.is_(True))
+            .where(
+                Categoria.workspace_id == ws,
+                Categoria.tipo == "despesa",
+                Categoria.ativa.is_(True),
+            )
             .order_by(Categoria.nome)
         ).all()
         gastos_rows = s.execute(
             select(Transacao.categoria_id, func.sum(Transacao.valor))
-            .where(Transacao.competencia == competencia, Transacao.tipo == "despesa")
+            .where(
+                Transacao.workspace_id == ws,
+                Transacao.competencia == competencia,
+                Transacao.tipo == "despesa",
+            )
             .group_by(Transacao.categoria_id)
         ).all()
         gastos = {cid: _f(v) for cid, v in gastos_rows}
@@ -466,9 +547,13 @@ def orcamento_mes(competencia: dt.date) -> pd.DataFrame:
 
 
 def definir_orcamento(competencia: dt.date, categoria_id: int, valor: float) -> None:
+    ws = _ws()
     with get_session() as s:
+        if _buscar(s, Categoria, categoria_id) is None:
+            return
         obj = s.scalar(
             select(Orcamento).where(
+                Orcamento.workspace_id == ws,
                 Orcamento.competencia == competencia,
                 Orcamento.categoria_id == categoria_id,
             )
@@ -479,23 +564,44 @@ def definir_orcamento(competencia: dt.date, categoria_id: int, valor: float) -> 
         elif obj:
             obj.valor = valor
         else:
-            s.add(Orcamento(competencia=competencia, categoria_id=categoria_id, valor=valor))
+            s.add(
+                Orcamento(
+                    workspace_id=ws,
+                    competencia=competencia,
+                    categoria_id=categoria_id,
+                    valor=valor,
+                )
+            )
         s.commit()
 
 
 def copiar_orcamento(de: dt.date, para: dt.date) -> int:
     """Copia as metas de um mês para outro. É o que substitui o 'copiar a planilha'."""
+    ws = _ws()
     with get_session() as s:
-        origem = s.scalars(select(Orcamento).where(Orcamento.competencia == de)).all()
+        origem = s.scalars(
+            select(Orcamento).where(Orcamento.workspace_id == ws, Orcamento.competencia == de)
+        ).all()
         existentes = {
             o.categoria_id
-            for o in s.scalars(select(Orcamento).where(Orcamento.competencia == para)).all()
+            for o in s.scalars(
+                select(Orcamento).where(
+                    Orcamento.workspace_id == ws, Orcamento.competencia == para
+                )
+            ).all()
         }
         novos = 0
         for o in origem:
             if o.categoria_id in existentes:
                 continue
-            s.add(Orcamento(competencia=para, categoria_id=o.categoria_id, valor=o.valor))
+            s.add(
+                Orcamento(
+                    workspace_id=ws,
+                    competencia=para,
+                    categoria_id=o.categoria_id,
+                    valor=o.valor,
+                )
+            )
             novos += 1
         s.commit()
     return novos
@@ -503,8 +609,11 @@ def copiar_orcamento(de: dt.date, para: dt.date) -> int:
 
 def copiar_lancamentos(de: dt.date, para: dt.date, apenas_ids: list[int] | None = None) -> int:
     """Repete lançamentos de um mês no outro (contas fixas, salário)."""
+    ws = _ws()
     with get_session() as s:
-        q = select(Transacao).where(Transacao.competencia == de)
+        q = select(Transacao).where(
+            Transacao.workspace_id == ws, Transacao.competencia == de
+        )
         if apenas_ids:
             q = q.where(Transacao.id.in_(apenas_ids))
         origem = s.scalars(q).all()
@@ -513,6 +622,7 @@ def copiar_lancamentos(de: dt.date, para: dt.date, apenas_ids: list[int] | None 
             nova_data = somar_meses(t.data, delta)
             s.add(
                 Transacao(
+                    workspace_id=ws,
                     data=nova_data,
                     competencia=para,
                     descricao=t.descricao,
@@ -561,11 +671,16 @@ def faturas(competencia: dt.date) -> pd.DataFrame:
 
 
 def listar_investimentos() -> pd.DataFrame:
+    ws = _ws()
     with get_session() as s:
         invs = s.scalars(
-            select(Investimento).where(Investimento.ativo.is_(True)).order_by(Investimento.nome)
+            select(Investimento)
+            .where(Investimento.workspace_id == ws, Investimento.ativo.is_(True))
+            .order_by(Investimento.nome)
         ).all()
-        movs = s.scalars(select(MovimentoInvestimento)).all()
+        movs = s.scalars(
+            select(MovimentoInvestimento).where(MovimentoInvestimento.workspace_id == ws)
+        ).all()
 
     saldo: dict[int, float] = {}
     aportado: dict[int, float] = {}
@@ -601,7 +716,9 @@ def listar_investimentos() -> pd.DataFrame:
 
 def salvar_investimento(nome: str, tipo: str, instituicao: str, id_: int | None = None) -> None:
     with get_session() as s:
-        obj = s.get(Investimento, id_) if id_ else Investimento()
+        obj = _buscar(s, Investimento, id_) if id_ else Investimento(workspace_id=_ws())
+        if obj is None:
+            return
         obj.nome, obj.tipo, obj.instituicao = nome.strip(), tipo, instituicao.strip()
         s.add(obj)
         s.commit()
@@ -610,9 +727,13 @@ def salvar_investimento(nome: str, tipo: str, instituicao: str, id_: int | None 
 def salvar_movimento_investimento(
     investimento_id: int, data: dt.date, tipo: str, valor: float, observacao: str = ""
 ) -> None:
+    ws = _ws()
     with get_session() as s:
+        if _buscar(s, Investimento, investimento_id) is None:
+            return
         s.add(
             MovimentoInvestimento(
+                workspace_id=ws,
                 investimento_id=investimento_id,
                 data=data,
                 tipo=tipo,
@@ -625,7 +746,7 @@ def salvar_movimento_investimento(
 
 def movimentos_investimento(investimento_id: int | None = None) -> pd.DataFrame:
     with get_session() as s:
-        q = select(MovimentoInvestimento)
+        q = select(MovimentoInvestimento).where(MovimentoInvestimento.workspace_id == _ws())
         if investimento_id:
             q = q.where(MovimentoInvestimento.investimento_id == investimento_id)
         movs = s.scalars(q.order_by(MovimentoInvestimento.data.desc())).all()
@@ -647,7 +768,7 @@ def movimentos_investimento(investimento_id: int | None = None) -> pd.DataFrame:
 
 def excluir_movimento_investimento(id_: int) -> None:
     with get_session() as s:
-        obj = s.get(MovimentoInvestimento, id_)
+        obj = _buscar(s, MovimentoInvestimento, id_)
         if obj:
             s.delete(obj)
             s.commit()
@@ -682,7 +803,11 @@ def evolucao_patrimonio(meses: int = 12) -> pd.DataFrame:
 
 def listar_objetivos() -> pd.DataFrame:
     with get_session() as s:
-        objs = s.scalars(select(Objetivo).order_by(Objetivo.concluido, Objetivo.id)).all()
+        objs = s.scalars(
+            select(Objetivo)
+            .where(Objetivo.workspace_id == _ws())
+            .order_by(Objetivo.concluido, Objetivo.id)
+        ).all()
         registros = [
             {
                 "id": o.id,
@@ -711,7 +836,9 @@ def salvar_objetivo(
     id_: int | None = None,
 ) -> None:
     with get_session() as s:
-        obj = s.get(Objetivo, id_) if id_ else Objetivo()
+        obj = _buscar(s, Objetivo, id_) if id_ else Objetivo(workspace_id=_ws())
+        if obj is None:
+            return
         obj.nome, obj.valor_alvo, obj.valor_atual = nome.strip(), valor_alvo, valor_atual
         obj.data_alvo = data_alvo
         obj.concluido = valor_alvo > 0 and valor_atual >= valor_alvo
@@ -721,7 +848,7 @@ def salvar_objetivo(
 
 def excluir_objetivo(id_: int) -> None:
     with get_session() as s:
-        obj = s.get(Objetivo, id_)
+        obj = _buscar(s, Objetivo, id_)
         if obj:
             s.delete(obj)
             s.commit()
@@ -737,12 +864,22 @@ def importar_transacoes(df: pd.DataFrame) -> tuple[int, list[str]]:
     data, descricao, valor, tipo, categoria, conta, cartao.
     Categorias e contas que não existirem são criadas.
     """
+    ws = _ws()
     erros: list[str] = []
     inseridos = 0
     with get_session() as s:
-        cats = {(c.nome.lower(), c.tipo): c for c in s.scalars(select(Categoria)).all()}
-        contas = {c.nome.lower(): c for c in s.scalars(select(Conta)).all()}
-        cartoes = {c.nome.lower(): c for c in s.scalars(select(Cartao)).all()}
+        cats = {
+            (c.nome.lower(), c.tipo): c
+            for c in s.scalars(select(Categoria).where(Categoria.workspace_id == ws)).all()
+        }
+        contas = {
+            c.nome.lower(): c
+            for c in s.scalars(select(Conta).where(Conta.workspace_id == ws)).all()
+        }
+        cartoes = {
+            c.nome.lower(): c
+            for c in s.scalars(select(Cartao).where(Cartao.workspace_id == ws)).all()
+        }
 
         for i, linha in df.iterrows():
             try:
@@ -756,7 +893,7 @@ def importar_transacoes(df: pd.DataFrame) -> tuple[int, list[str]]:
                 nome_cat = str(linha.get("categoria") or "Outros").strip()
                 chave = (nome_cat.lower(), tipo)
                 if chave not in cats:
-                    nova = Categoria(nome=nome_cat, tipo=tipo)
+                    nova = Categoria(workspace_id=ws, nome=nome_cat, tipo=tipo)
                     s.add(nova)
                     s.flush()
                     cats[chave] = nova
@@ -765,7 +902,7 @@ def importar_transacoes(df: pd.DataFrame) -> tuple[int, list[str]]:
                 nome_conta = str(linha.get("conta") or "").strip()
                 if nome_conta:
                     if nome_conta.lower() not in contas:
-                        nova_conta = Conta(nome=nome_conta)
+                        nova_conta = Conta(workspace_id=ws, nome=nome_conta)
                         s.add(nova_conta)
                         s.flush()
                         contas[nome_conta.lower()] = nova_conta
@@ -775,7 +912,9 @@ def importar_transacoes(df: pd.DataFrame) -> tuple[int, list[str]]:
                 nome_cartao = str(linha.get("cartao") or "").strip()
                 if nome_cartao:
                     if nome_cartao.lower() not in cartoes:
-                        novo_cartao = Cartao(nome=nome_cartao, banco=nome_cartao)
+                        novo_cartao = Cartao(
+                            workspace_id=ws, nome=nome_cartao, banco=nome_cartao
+                        )
                         s.add(novo_cartao)
                         s.flush()
                         cartoes[nome_cartao.lower()] = novo_cartao
@@ -783,6 +922,7 @@ def importar_transacoes(df: pd.DataFrame) -> tuple[int, list[str]]:
 
                 s.add(
                     Transacao(
+                        workspace_id=ws,
                         data=data,
                         competencia=competencia_de(data, cartao),
                         descricao=str(linha.get("descricao") or "(sem descrição)")[:160],

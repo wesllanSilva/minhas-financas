@@ -3,6 +3,24 @@
 Versionamento semântico. A versão em vigor fica em `core/versao.py` e aparece
 na tela de login.
 
+## 0.3.0
+
+Vira **Wstack Finance**, com a identidade visual da família Wstack.
+
+- Tema escuro violeta (mesma base do Wstack Ops): Sora nos títulos, Inter no
+  texto, JetBrains Mono em tudo que é dinheiro — sempre tabular, verde para o
+  que entra e vermelho para o que sai.
+- Tela de login com logo, nome, versão e um fundo próprio, gerado por código
+  (`ferramentas/gerar_bg_login.py`): um extrato virado em paisagem, com a
+  receita em verde e a despesa em violeta atravessando o escuro.
+- Logo e nome no topo da barra lateral; ícone da aba é a logo Wstack.
+- Cards de resumo com a cor do valor como acento; gráficos com paleta
+  categórica própria em vez de tudo violeta.
+- Categorias padrão ganham cores que funcionam no fundo escuro (só para
+  carteiras novas — as existentes mantêm as cores que já tinham, editáveis em
+  Configurações → Categorias).
+- Backup passa a se chamar `wstack-finance-backup.csv`.
+
 ## 0.2.1
 
 - Ferramenta de migração para quem já tinha banco na 0.1.x

@@ -1,4 +1,4 @@
-# Minhas Finanças
+# Wstack Finance
 
 App de controle financeiro em Python + Streamlit, para substituir a planilha
 mensal. Lançamentos, cartões, orçamento por categoria, investimentos e objetivos —
@@ -157,9 +157,12 @@ core/escopo.py            qual carteira está ativa — filtra tudo que o repo l
 core/cookies.py           cookie de sessão (é o que sobrevive ao refresh)
 core/repo.py              todas as consultas e regras (parcelas, fatura, orçamento)
 core/forms.py             formulário de lançamento
-core/ui.py                tema, formatação em R$, tela de login, seletor de mês
+core/ui.py                formatação em R$, tela de login, barra lateral, seletor de mês
+core/tema.py              identidade visual: cores, fontes, CSS, paleta dos gráficos
 core/versao.py            versão mostrada na tela de login
 views/                    uma tela por arquivo
+static/img/               logo e fundo do login (entram na página como data URI)
+ferramentas/              migração de banco e gerador do fundo do login
 testes/                   suíte pytest
 ```
 
@@ -177,7 +180,9 @@ orçamento, importação), o login, e abre cada tela para ver se nenhuma quebrou
 enxerga nem altera a outra. Um erro ali não trava nada — só faz uma pessoa ver o
 dinheiro da outra.
 
-Para mudar as cores, mexa em `core/ui.py` e `.streamlit/config.toml`.
+Para mudar as cores, mexa em `core/tema.py` (os tokens no topo) e em
+`.streamlit/config.toml`. O fundo do login é gerado por
+`python ferramentas/gerar_bg_login.py` — ele lê a mesma paleta.
 Para adicionar um campo, comece por `core/models.py` — as tabelas são criadas
 sozinhas na primeira execução. Tabela nova com dado financeiro precisa de
 `workspace_id` e de entrar em `COM_ESCOPO`, ou os testes reclamam.

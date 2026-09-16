@@ -3,6 +3,13 @@
 Versionamento semântico. A versão em vigor fica em `core/versao.py` e aparece
 na tela de login.
 
+## 0.3.1
+
+- `ferramentas/recolorir_categorias.py`: troca as cores das categorias criadas
+  antes da 0.3.0 (terrosas, feitas para o fundo claro) pela paleta escura.
+  Categoria padrão recebe a cor padrão; as demais, cores da paleta sem repetir
+  dentro da carteira.
+
 ## 0.3.0
 
 Vira **Wstack Finance**, com a identidade visual da família Wstack.

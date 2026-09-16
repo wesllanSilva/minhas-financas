@@ -48,3 +48,11 @@ def test_nao_toca_em_outra_carteira(usuario, emails):
     afetadas = {c.workspace_id for c, _, _ in _planejar()}
     assert ws_outro in afetadas
     assert usuario[1] not in afetadas
+
+
+def test_categoria_propria_depois_de_todas_as_padrao_ainda_ganha_cor(carteira):
+    """As 21 padrão já ocupam a paleta inteira; uma "Zoológico" (que ordena
+    depois de todas) não pode ficar sem cor."""
+    repo.salvar_categoria("Zoológico", "despesa", "#8C4A3F")
+    novas = {c.nome: nova for c, _, nova in _planejar() if c.workspace_id == carteira}
+    assert novas["Zoológico"] in tema.SERIE

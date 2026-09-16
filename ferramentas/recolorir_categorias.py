@@ -17,6 +17,7 @@ O banco é o mesmo que o app usa (DATABASE_URL, ou o SQLite local).
 from __future__ import annotations
 
 import argparse
+import itertools
 import sys
 from pathlib import Path
 
@@ -42,11 +43,15 @@ def planejar() -> list[tuple[Categoria, str, str]]:
                 .order_by(Categoria.tipo, Categoria.nome)
             ).all()
             usadas: set[str] = set()
-            fila = iter(tema.SERIE * 4)  # sobra para carteiras com muitas categorias
+            fila = itertools.cycle(tema.SERIE)
             for c in cats:
                 nova = PADRAO.get((c.nome.lower(), c.tipo))
                 if nova is None:
-                    nova = next(x for x in fila if x not in usadas)
+                    # As categorias padrão sozinhas já ocupam a paleta inteira,
+                    # então "cor livre" nem sempre existe: prefere uma que não
+                    # foi usada e, se todas foram, aceita repetir.
+                    livres = [x for x in tema.SERIE if x not in usadas]
+                    nova = livres[0] if livres else next(fila)
                 usadas.add(nova)
                 if nova.lower() != (c.cor or "").lower():
                     mudancas.append((c, c.cor, nova))

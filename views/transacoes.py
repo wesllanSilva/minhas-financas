@@ -92,7 +92,7 @@ for r in filtrado.itertuples():
     sinal = "-" if r.tipo == "despesa" else "+"
     cor = ui.VERMELHO if r.tipo == "despesa" else ui.VERDE
     c4.markdown(
-        f"<div style='padding-top:8px;text-align:right;font-variant-numeric:tabular-nums;"
+        f"<div class='dinheiro' style='padding-top:8px;text-align:right;"
         f"font-weight:600;color:{cor}'>{sinal} {ui.brl(r.valor)}</div>",
         unsafe_allow_html=True,
     )
@@ -114,7 +114,7 @@ for r in filtrado.itertuples():
             st.rerun()
 
     st.markdown(
-        "<hr style='margin:2px 0;border:none;border-top:1px solid #E7ECEA'>",
+        f"<hr style='margin:2px 0;border:none;border-top:1px solid {ui.LINHA}'>",
         unsafe_allow_html=True,
     )
 

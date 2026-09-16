@@ -253,7 +253,7 @@ with aba_dados:
     st.download_button(
         "Baixar todos os lançamentos (CSV)",
         tudo.to_csv(index=False).encode("utf-8-sig"),
-        file_name="minhas-financas-backup.csv",
+        file_name="wstack-finance-backup.csv",
         mime="text/csv",
         disabled=tudo.empty,
     )

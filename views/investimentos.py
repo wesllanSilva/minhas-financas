@@ -110,13 +110,12 @@ if not invs.empty and patrimonio:
             go.Pie(
                 labels=por_tipo["tipo"], values=por_tipo["saldo"], hole=0.6,
                 textinfo="label+percent",
+                marker=dict(colors=ui.SERIE, line=dict(color=ui.SUPERFICIE, width=2)),
                 hovertemplate="%{label}<br>R$ %{value:,.2f}<extra></extra>",
             )
         )
-        fig.update_layout(
-            height=300, margin=dict(t=10, b=10, l=10, r=10), showlegend=False,
-            paper_bgcolor="rgba(0,0,0,0)",
-        )
+        fig.update_layout(ui.PLOTLY)
+        fig.update_layout(height=300, margin=dict(t=10, b=10, l=10, r=10), showlegend=False)
         st.plotly_chart(fig, width="stretch")
     with c2:
         st.subheader("Evolução")
@@ -125,12 +124,13 @@ if not invs.empty and patrimonio:
             go.Scatter(
                 x=evo["mes"], y=evo["patrimonio"], mode="lines+markers",
                 line=dict(color=ui.VERDE, width=2.5), fill="tozeroy",
-                fillcolor="rgba(15,93,74,0.10)",
+                fillcolor="rgba(52,211,153,0.12)",
+                marker=dict(size=7, line=dict(color=ui.SUPERFICIE, width=1.5)),
             )
         )
+        fig.update_layout(ui.PLOTLY)
         fig.update_layout(
             height=300, margin=dict(t=10, b=10, l=10, r=10),
-            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            yaxis=dict(gridcolor="#E4EAE7", tickprefix="R$ "), xaxis=dict(showgrid=False),
+            yaxis=dict(tickprefix="R$ "), xaxis=dict(showgrid=False),
         )
         st.plotly_chart(fig, width="stretch")

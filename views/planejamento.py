@@ -116,7 +116,7 @@ if not orc.empty:
         cor = ui.cor_do_uso(r.uso) if r.planejado else ui.CINZA
         if r.planejado:
             direita = (
-                f"{ui.brl(r.gasto)} <span style='color:#98A29E'>de {ui.brl(r.planejado)}</span>"
+                f"{ui.brl(r.gasto)} <span style='color:{ui.CINZA}'>de {ui.brl(r.planejado)}</span>"
             )
             nota = (
                 f"restam {ui.brl(r.restante)}" if r.restante >= 0
@@ -126,12 +126,12 @@ if not orc.empty:
             direita = ui.brl(r.gasto)
             nota = "sem meta definida"
         blocos.append(
-            f"<div style='padding:9px 0;border-bottom:1px solid #EDF1EF'>"
+            f"<div style='padding:9px 0;border-bottom:1px solid {ui.LINHA}'>"
             f"<div style='display:flex;justify-content:space-between;font-size:.88rem'>"
             f"<span><span style='display:inline-block;width:8px;height:8px;border-radius:50%;"
             f"background:{r.cor};margin-right:7px'></span>{r.categoria}</span>"
             f"<span style='font-variant-numeric:tabular-nums'>{direita}</span></div>"
             f"{ui.barra(r.uso, cor) if r.planejado else ''}"
-            f"<div style='font-size:.72rem;color:#98A29E;margin-top:3px'>{nota}</div></div>"
+            f"<div style='font-size:.72rem;color:{ui.CINZA};margin-top:3px'>{nota}</div></div>"
         )
     st.markdown(f"<div class='ficha'>{''.join(blocos)}</div>", unsafe_allow_html=True)

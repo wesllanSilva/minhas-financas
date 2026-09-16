@@ -1,4 +1,4 @@
-"""Minhas Finanças — painel do mês."""
+"""Wstack Finance — painel do mês."""
 from __future__ import annotations
 
 import plotly.graph_objects as go
@@ -16,12 +16,12 @@ st.caption(repo.rotulo_mes(competencia))
 
 ui.painel(
     [
-        ("Saldo em conta", ui.brl(saldo), ui.VERDE if saldo >= 0 else ui.VERMELHO, "Somando todas as contas"),
+        ("Saldo em conta", ui.brl(saldo), ui.VIOLETA_BRILHO if saldo >= 0 else ui.VERMELHO, "Somando todas as contas"),
         ("Receitas do mês", ui.brl(resumo["receitas"]), ui.VERDE, "Tudo que entrou"),
         ("Despesas do mês", ui.brl(resumo["despesas"]), ui.VERMELHO,
          f"{ui.brl(resumo['a_pagar'])} ainda em aberto"),
         ("Balanço", ui.brl(resumo["balanco"]),
-         ui.VERDE if resumo["balanco"] >= 0 else ui.VERMELHO, "Receitas menos despesas"),
+         ui.CIANO if resumo["balanco"] >= 0 else ui.AMBAR, "Receitas menos despesas"),
     ]
 )
 
@@ -51,20 +51,21 @@ with esquerda:
                 labels=por_cat["categoria"],
                 values=por_cat["valor"],
                 hole=0.62,
-                marker=dict(colors=por_cat["cor"].tolist(), line=dict(color="#FFFFFF", width=2)),
+                marker=dict(colors=por_cat["cor"].tolist(), line=dict(color=ui.SUPERFICIE, width=2)),
                 textinfo="none",
                 hovertemplate="%{label}<br>R$ %{value:,.2f} · %{percent}<extra></extra>",
             )
         )
+        fig.update_layout(ui.PLOTLY)
         fig.update_layout(
             height=300,
             margin=dict(t=10, b=10, l=10, r=10),
             showlegend=False,
-            paper_bgcolor="rgba(0,0,0,0)",
             annotations=[
                 dict(
                     text=f"<b>{ui.brl(por_cat['valor'].sum())}</b>",
                     x=0.5, y=0.52, font_size=18, showarrow=False,
+                    font=dict(family="JetBrains Mono, monospace", color=ui.TINTA),
                 ),
                 dict(text="no mês", x=0.5, y=0.42, font_size=11, font_color=ui.CINZA, showarrow=False),
             ],
@@ -74,11 +75,11 @@ with esquerda:
         total = por_cat["valor"].sum()
         linhas = "".join(
             f"<div style='display:flex;align-items:center;gap:9px;padding:5px 0;"
-            f"border-bottom:1px solid #EDF1EF'>"
+            f"border-bottom:1px solid {ui.LINHA}'>"
             f"<span style='width:9px;height:9px;border-radius:50%;background:{r.cor}'></span>"
             f"<span style='flex:1'>{r.categoria}</span>"
             f"<span style='color:{ui.CINZA};font-size:.8rem'>{r.valor / total * 100:.0f}%</span>"
-            f"<span style='font-variant-numeric:tabular-nums;font-weight:500'>{ui.brl(r.valor)}</span>"
+            f"<span class='dinheiro'>{ui.brl(r.valor)}</span>"
             f"</div>"
             for r in por_cat.head(8).itertuples()
         )
@@ -104,8 +105,8 @@ with direita:
                 f"<div style='padding:8px 0'>"
                 f"<div style='display:flex;justify-content:space-between;font-size:.86rem'>"
                 f"<span>{r.categoria}</span>"
-                f"<span style='font-variant-numeric:tabular-nums;color:{cor}'>"
-                f"{ui.brl(r.gasto)} <span style='color:#98A29E'>/ {ui.brl(r.planejado)}</span></span>"
+                f"<span class='dinheiro' style='color:{cor}'>"
+                f"{ui.brl(r.gasto)} <span style='color:{ui.CINZA}'>/ {ui.brl(r.planejado)}</span></span>"
                 f"</div>{ui.barra(r.uso, cor)}</div>"
             )
         st.markdown(f"<div class='ficha'>{''.join(blocos)}</div>", unsafe_allow_html=True)
@@ -123,9 +124,9 @@ with direita:
                 f"<div style='padding:8px 0'>"
                 f"<div style='display:flex;justify-content:space-between;font-size:.86rem'>"
                 f"<span>{r.cartao}</span>"
-                f"<span style='font-variant-numeric:tabular-nums;font-weight:500'>{ui.brl(r.total)}</span>"
+                f"<span class='dinheiro'>{ui.brl(r.total)}</span>"
                 f"</div>{ui.barra(r.uso, cor) if r.limite else ''}"
-                f"<div style='font-size:.72rem;color:#98A29E;margin-top:3px'>{extra}</div></div>"
+                f"<div style='font-size:.72rem;color:{ui.CINZA};margin-top:3px'>{extra}</div></div>"
             )
         st.markdown(f"<div class='ficha'>{''.join(blocos)}</div>", unsafe_allow_html=True)
 
@@ -139,21 +140,23 @@ fig.add_bar(x=serie["mes"], y=serie["receitas"], name="Receitas", marker_color=u
 fig.add_bar(x=serie["mes"], y=serie["despesas"], name="Despesas", marker_color=ui.VERMELHO)
 fig.add_scatter(
     x=serie["mes"], y=serie["saldo"], name="Sobra", mode="lines+markers",
-    line=dict(color=ui.TINTA, width=2),
+    line=dict(color=ui.VIOLETA_BRILHO, width=2.5),
+    marker=dict(size=7, color=ui.VIOLETA_BRILHO, line=dict(color=ui.SUPERFICIE, width=1.5)),
 )
+fig.update_traces(marker_line_width=0, selector=dict(type="bar"))
+fig.update_layout(ui.PLOTLY)
 fig.update_layout(
     barmode="group",
+    bargap=0.28,
     height=320,
     margin=dict(t=10, b=10, l=10, r=10),
-    paper_bgcolor="rgba(0,0,0,0)",
-    plot_bgcolor="rgba(0,0,0,0)",
     legend=dict(orientation="h", y=1.12, x=0),
-    yaxis=dict(gridcolor="#E4EAE7", tickprefix="R$ "),
+    yaxis=dict(tickprefix="R$ "),
     xaxis=dict(showgrid=False),
 )
 st.plotly_chart(fig, width="stretch")
 
 with st.sidebar:
-    st.caption("Minhas Finanças · dados só seus")
+    st.caption("Wstack Finance · dados só seus")
     if repo.transacoes().empty:
         st.info("Comece importando sua planilha em **Configurações → Importar**.")

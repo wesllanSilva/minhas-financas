@@ -5,75 +5,23 @@ import datetime as dt
 
 import streamlit as st
 
-from . import auth, cookies, escopo, repo
+from . import auth, cookies, escopo, repo, tema
 from .versao import __version__
 
-VERDE = "#0F5D4A"
-VERMELHO = "#A8352A"
-AMBAR = "#B5852B"
-TINTA = "#16241F"
-CINZA = "#6B7A75"
-
-CSS = """
-<style>
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
-
-html, body, .stApp, button, input, textarea, select {
-    font-family: 'IBM Plex Sans', system-ui, sans-serif;
-}
-
-/* Os ícones do Streamlit são ligatures da fonte Material Symbols: o span
-   contém o nome do ícone em texto puro. Se a fonte for trocada, a ligature
-   não acontece e o nome ("dashboard", "settings") vaza por cima do rótulo. */
-[data-testid="stIconMaterial"] {
-    font-family: 'Material Symbols Rounded' !important;
-}
-
-.stApp { background: #F1F3F2; }
-[data-testid="stSidebar"] { background: #FFFFFF; border-right: 1px solid #DFE5E2; }
-[data-testid="stHeader"] { background: transparent; }
-
-h1 { font-size: 1.9rem; font-weight: 600; letter-spacing: -0.02em; color: #16241F; }
-h2 { font-size: 1.25rem; font-weight: 600; color: #16241F; }
-h3 { font-size: 1.02rem; font-weight: 600; color: #16241F; }
-
-.painel {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-    gap: 12px;
-    margin: 4px 0 22px 0;
-}
-.ficha {
-    background: #FFFFFF;
-    border: 1px solid #E2E8E5;
-    border-radius: 10px;
-    padding: 14px 16px 15px 16px;
-}
-.ficha .rotulo { font-size: .78rem; color: #6B7A75; margin-bottom: 4px; }
-.ficha .cifra {
-    font-size: 1.5rem; font-weight: 600; letter-spacing: -0.02em;
-    font-variant-numeric: tabular-nums;
-}
-.ficha .nota { font-size: .74rem; color: #8A9691; margin-top: 3px; }
-.ficha.destaque { border-left: 3px solid #0F5D4A; }
-
-.trilho { height: 6px; background: #E6EBE9; border-radius: 3px; overflow: hidden; }
-.trilho > div { height: 100%; border-radius: 3px; }
-
-.tag {
-    display: inline-block; padding: 2px 9px; border-radius: 999px;
-    font-size: .74rem; font-weight: 500; color: #fff;
-}
-
-div[data-testid="stMetricValue"] { font-variant-numeric: tabular-nums; }
-.stDataFrame { font-variant-numeric: tabular-nums; }
-footer, #MainMenu { visibility: hidden; }
-
-/* O componente que grava o cookie não desenha nada, mas ainda ocupa a altura
-   de um bloco. Sem isto sobra um buraco no topo da página. */
-iframe[title="streamlit.components.v1.html"][height="0"] { display: none; }
-</style>
-"""
+# Nomes que as telas já usam. Os valores vêm da identidade Wstack (core/tema.py).
+VERDE = tema.OK
+VERMELHO = tema.ERRO
+AMBAR = tema.AVISO
+TINTA = tema.TINTA
+CINZA = tema.CINZA
+VIOLETA = tema.VIOLETA
+VIOLETA_BRILHO = tema.VIOLETA_BRILHO
+CIANO = tema.CIANO
+SERIE = tema.SERIE
+LINHA = tema.LINHA
+GRADE = tema.GRADE
+SUPERFICIE = tema.SURFACE
+PLOTLY = tema.PLOTLY_LAYOUT
 
 
 def brl(valor: float) -> str:
@@ -82,9 +30,18 @@ def brl(valor: float) -> str:
     return f"{'-' if negativo else ''}R$ {txt}"
 
 
-def configurar_pagina(titulo: str, icone: str = "💰") -> None:
-    st.set_page_config(page_title=f"{titulo} · Minhas Finanças", page_icon=icone, layout="wide")
-    st.markdown(CSS, unsafe_allow_html=True)
+def configurar_pagina(titulo: str) -> None:
+    st.set_page_config(
+        page_title=f"{titulo} · {tema.NOME}",
+        page_icon=tema.logo_pil() or "💰",
+        layout="wide",
+    )
+    st.markdown(tema.CSS_BASE, unsafe_allow_html=True)
+    logo = tema.logo_pil()
+    if logo is not None:
+        # Fica acima do menu de navegação, que o st.navigation desenha antes de
+        # qualquer conteúdo nosso na barra lateral.
+        st.logo(logo, size="large")
 
 
 # --------------------------------------------------------------------------- #
@@ -138,24 +95,20 @@ def exigir_login() -> bool:
     return _definir_workspace(usuario)
 
 
-def _rodape_versao() -> None:
+def _tela_de_login() -> None:
+    st.markdown(tema.css_login(), unsafe_allow_html=True)
     st.markdown(
-        f"<div style='margin-top:26px;font-size:.76rem;color:#8A9691'>"
-        f"Minhas Finanças · versão {__version__}</div>",
+        tema.marca_html("login").replace(
+            "</div></div>", f"</div><div class='versao'>v{__version__}</div></div>"
+        ),
         unsafe_allow_html=True,
     )
-
-
-def _tela_de_login() -> None:
-    st.title("Minhas Finanças")
 
     if not auth.existe_algum_usuario():
         st.caption("Primeiro acesso: crie a sua conta.")
         _form_cadastro(primeiro=True)
-        _rodape_versao()
         return
 
-    st.caption("Entre para ver seus lançamentos.")
     entrar, criar = st.tabs(["Entrar", "Criar conta"])
 
     with entrar:
@@ -173,8 +126,6 @@ def _tela_de_login() -> None:
 
     with criar:
         _form_cadastro()
-
-    _rodape_versao()
 
 
 def _form_cadastro(primeiro: bool = False) -> None:
@@ -244,9 +195,11 @@ def barra_lateral_conta() -> None:
         elif carteiras:
             st.caption(carteiras[0]["nome"])
 
-        esq, dir_ = st.columns([3, 2])
-        esq.caption(usuario["nome"])
-        if dir_.button("Sair", key="_sair", width="stretch"):
+        st.markdown(
+            f"<div class='usuario'><i></i><b>{usuario['nome']}</b></div>",
+            unsafe_allow_html=True,
+        )
+        if st.button("Sair", key="_sair", width="stretch", type="secondary"):
             sair()
             st.rerun()
         st.divider()
@@ -284,7 +237,7 @@ def seletor_mes() -> dt.date:
 def painel(fichas: list[tuple[str, str, str, str]]) -> None:
     """Linha de cartões: (rótulo, valor, cor do valor, nota)."""
     blocos = "".join(
-        f"<div class='ficha'><div class='rotulo'>{rotulo}</div>"
+        f"<div class='ficha resumo' style='--acento:{cor}'><div class='rotulo'>{rotulo}</div>"
         f"<div class='cifra' style='color:{cor}'>{valor}</div>"
         f"<div class='nota'>{nota}</div></div>"
         for rotulo, valor, cor, nota in fichas
@@ -309,7 +262,7 @@ def vazio(mensagem: str, acao: str = "") -> None:
     st.markdown(
         f"<div class='ficha' style='text-align:center;padding:34px 16px'>"
         f"<div style='color:{CINZA}'>{mensagem}</div>"
-        f"{f'<div style=\"margin-top:6px;font-size:.82rem;color:#8A9691\">{acao}</div>' if acao else ''}"
+        f"{f'<div style=\"margin-top:6px;font-size:.82rem;color:{CINZA}\">{acao}</div>' if acao else ''}"
         f"</div>",
         unsafe_allow_html=True,
     )

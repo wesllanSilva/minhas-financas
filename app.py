@@ -1,4 +1,4 @@
-"""Minhas Finanças — ponto de entrada.
+"""Wstack Finance — ponto de entrada.
 
 Rode local com:  streamlit run app.py
 """
@@ -8,7 +8,7 @@ import streamlit as st
 
 from core import ui
 
-ui.configurar_pagina("Minhas Finanças", "💰")
+ui.configurar_pagina("Painel")
 
 # Precisa vir antes da navegação: é aqui que o workspace ativo é definido, e
 # nenhuma página pode consultar o banco sem ele.

@@ -16,31 +16,54 @@ aba_contas, aba_cartoes, aba_cats, aba_carteiras, aba_dados = st.tabs(
 
 # --------------------------------------------------------------------------- #
 with aba_contas:
+    TIPOS_CONTA = ["Conta corrente", "Poupança", "Carteira", "Investimento"]
     contas = repo.listar_contas()
-    if not contas.empty:
-        tabela = contas.copy()
-        tabela["saldo_inicial"] = tabela["saldo_inicial"].map(ui.brl)
-        tabela = tabela[["nome", "tipo", "saldo_inicial"]]
-        tabela.columns = ["Nome", "Tipo", "Saldo inicial"]
-        st.dataframe(tabela, hide_index=True, width="stretch")
+    for r in contas.itertuples():
+        c1, c2, c3, c4 = st.columns([2.2, 1.6, 1.6, 0.8])
+        c1.write(f"**{r.nome}**")
+        c2.caption(r.tipo)
+        c3.markdown(f"<span class='dinheiro'>{ui.brl(r.saldo_inicial)}</span>", unsafe_allow_html=True)
+        with c4.popover("✎", width="stretch"):
+            with st.form(f"edconta{r.id}"):
+                n_nome = st.text_input("Nome", value=r.nome)
+                n_tipo = st.selectbox(
+                    "Tipo", TIPOS_CONTA,
+                    index=TIPOS_CONTA.index(r.tipo) if r.tipo in TIPOS_CONTA else 0,
+                )
+                n_saldo = st.number_input(
+                    "Saldo inicial (R$)", step=100.0, format="%.2f", value=float(r.saldo_inicial)
+                )
+                e1, e2 = st.columns(2)
+                salvar_c = e1.form_submit_button("Salvar", type="primary", width="stretch")
+                remover_c = e2.form_submit_button("Remover", width="stretch")
+            if salvar_c:
+                try:
+                    repo.salvar_conta(n_nome, n_tipo, float(n_saldo), id_=r.id)
+                    st.rerun()
+                except ValueError as erro:
+                    st.error(str(erro))
+            if remover_c:
+                repo.arquivar_conta(r.id)
+                st.rerun()
 
     with st.form("nova_conta", clear_on_submit=True):
         st.markdown("**Nova conta**")
         c1, c2, c3 = st.columns(3)
         nome = c1.text_input("Nome", placeholder="Nubank, Inter, Carteira…")
-        tipo = c2.selectbox("Tipo", ["Conta corrente", "Poupança", "Carteira", "Investimento"])
+        tipo = c2.selectbox("Tipo", TIPOS_CONTA)
         saldo = c3.number_input("Saldo inicial (R$)", step=100.0, format="%.2f")
         if st.form_submit_button("Salvar conta", type="primary"):
-            if nome.strip():
+            try:
                 repo.salvar_conta(nome, tipo, float(saldo))
                 st.success("Conta salva.")
                 st.rerun()
-            else:
-                st.error("Dê um nome à conta.")
+            except ValueError as erro:
+                st.error(str(erro))
 
     st.caption(
         "O saldo inicial é quanto havia na conta quando você começou a usar o app. "
-        "A partir daí o saldo se atualiza sozinho com os lançamentos pagos."
+        "A partir daí o saldo se atualiza sozinho com os lançamentos pagos. "
+        "Remover uma conta só a esconde: os lançamentos dela continuam contando."
     )
 
 # --------------------------------------------------------------------------- #
@@ -55,9 +78,31 @@ with aba_cartoes:
                 f"Limite {ui.brl(r.limite)} · fecha dia {r.dia_fechamento} · "
                 f"vence dia {r.dia_vencimento}"
             )
-            if c4.button("Remover", key=f"delcard{r.id}"):
-                repo.excluir_cartao(r.id)
-                st.rerun()
+            with c4.popover("✎", width="stretch"):
+                with st.form(f"edcard{r.id}"):
+                    n_nome = st.text_input("Apelido", value=r.nome)
+                    n_banco = st.text_input("Banco", value=r.banco or "")
+                    n_limite = st.number_input(
+                        "Limite (R$)", min_value=0.0, step=500.0, format="%.2f", value=float(r.limite)
+                    )
+                    f1, f2 = st.columns(2)
+                    n_fech = f1.number_input("Fechamento", 1, 31, int(r.dia_fechamento))
+                    n_venc = f2.number_input("Vencimento", 1, 31, int(r.dia_vencimento))
+                    st.caption("Mudar o fechamento recalcula em que fatura cada compra cai.")
+                    e1, e2 = st.columns(2)
+                    salvar_k = e1.form_submit_button("Salvar", type="primary", width="stretch")
+                    remover_k = e2.form_submit_button("Remover", width="stretch")
+                if salvar_k:
+                    try:
+                        repo.salvar_cartao(
+                            n_nome, n_banco, float(n_limite), int(n_fech), int(n_venc), id_=r.id
+                        )
+                        st.rerun()
+                    except ValueError as erro:
+                        st.error(str(erro))
+                if remover_k:
+                    repo.excluir_cartao(r.id)
+                    st.rerun()
 
     with st.form("novo_cartao", clear_on_submit=True):
         st.markdown("**Novo cartão**")
@@ -69,14 +114,12 @@ with aba_cartoes:
         fechamento = c4.number_input("Dia do fechamento", 1, 31, 1)
         vencimento = c5.number_input("Dia do vencimento", 1, 31, 10)
         if st.form_submit_button("Salvar cartão", type="primary"):
-            if nome.strip():
-                repo.salvar_cartao(
-                    nome, banco, float(limite), int(fechamento), int(vencimento)
-                )
+            try:
+                repo.salvar_cartao(nome, banco, float(limite), int(fechamento), int(vencimento))
                 st.success("Cartão salvo.")
                 st.rerun()
-            else:
-                st.error("Dê um apelido ao cartão.")
+            except ValueError as erro:
+                st.error(str(erro))
 
 # --------------------------------------------------------------------------- #
 with aba_cats:
@@ -86,14 +129,27 @@ with aba_cats:
             st.markdown(f"**{titulo}**")
             cats = repo.listar_categorias(tipo)
             for r in cats.itertuples():
-                a, b = st.columns([4, 1])
+                a, b = st.columns([4, 1.4])
                 a.markdown(
                     f"<span class='tag' style='background:{r.cor}'>{r.nome}</span>",
                     unsafe_allow_html=True,
                 )
-                if b.button("✕", key=f"delcat{r.id}"):
-                    repo.arquivar_categoria(r.id)
-                    st.rerun()
+                with b.popover("✎", width="stretch"):
+                    with st.form(f"edcat{r.id}"):
+                        novo_nome = st.text_input("Nome", value=r.nome)
+                        nova_cor = st.color_picker("Cor", value=r.cor)
+                        e1, e2 = st.columns(2)
+                        salvar_cat = e1.form_submit_button("Salvar", type="primary", width="stretch")
+                        remover_cat = e2.form_submit_button("Remover", width="stretch")
+                    if salvar_cat:
+                        try:
+                            repo.salvar_categoria(novo_nome, tipo, nova_cor, id_=r.id)
+                            st.rerun()
+                        except (repo.NomeRepetido, ValueError) as erro:
+                            st.error(str(erro))
+                    if remover_cat:
+                        repo.arquivar_categoria(r.id)
+                        st.rerun()
 
     st.divider()
     with st.form("nova_categoria", clear_on_submit=True):
@@ -105,14 +161,17 @@ with aba_cats:
         )
         cor = c3.color_picker("Cor", "#5B7A86")
         if st.form_submit_button("Criar categoria", type="primary"):
-            if nome.strip():
-                repo.salvar_categoria(nome, tipo, cor)
-                st.success("Categoria criada.")
-                st.rerun()
-            else:
+            if not nome.strip():
                 st.error("Dê um nome à categoria.")
+            else:
+                try:
+                    repo.salvar_categoria(nome, tipo, cor)
+                    st.success("Categoria criada.")
+                    st.rerun()
+                except repo.NomeRepetido as erro:
+                    st.error(str(erro))
 
-    st.caption("Remover uma categoria só a esconde: os lançamentos antigos continuam intactos.")
+    st.caption("Renomear uma categoria muda o nome em todos os lançamentos dela. Remover só a esconde: os lançamentos antigos continuam intactos.")
 
 # --------------------------------------------------------------------------- #
 with aba_carteiras:
@@ -131,7 +190,19 @@ with aba_carteiras:
     )
     for c in carteiras:
         marca = " · **aberta agora**" if c["id"] == ws_atual else ""
-        st.write(f"**{c['nome']}** — {c['papel']}{marca}")
+        w1, w2 = st.columns([5, 0.8])
+        w1.write(f"**{c['nome']}** — {c['papel']}{marca}")
+        if c["papel"] == "dono":
+            with w2.popover("✎", width="stretch"):
+                with st.form(f"edws{c['id']}"):
+                    n_ws = st.text_input("Nome da carteira", value=c["nome"])
+                    if st.form_submit_button("Salvar", type="primary", width="stretch"):
+                        try:
+                            auth.renomear_workspace(c["id"], n_ws, usuario_id)
+                            st.session_state.pop("_carteiras", None)
+                            st.rerun()
+                        except auth.ErroDeAuth as erro:
+                            st.error(str(erro))
 
     with st.form("nova_carteira", clear_on_submit=True):
         nome_nova = st.text_input("Nome da nova carteira", placeholder="Contas da casa")

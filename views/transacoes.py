@@ -4,9 +4,10 @@ from __future__ import annotations
 import streamlit as st
 
 from core import repo, ui
-from core.forms import formulario_lancamento
+from core.forms import abrir_edicao_pendente, formulario_lancamento, pedir_edicao
 
 competencia = ui.seletor_mes()
+abrir_edicao_pendente()
 
 st.title("Transações")
 st.caption(repo.rotulo_mes(competencia))
@@ -98,6 +99,9 @@ for r in filtrado.itertuples():
     )
 
     with c5.popover("⋯", width="stretch"):
+        if st.button("Editar", key=f"ed{r.id}", width="stretch"):
+            pedir_edicao(r.id)
+            st.rerun()
         if st.button(
             "Marcar como pendente" if r.pago else "Marcar como pago",
             key=f"pg{r.id}", width="stretch",

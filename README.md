@@ -13,12 +13,12 @@ uma não enxerga a outra, a não ser que você libere o acesso.
 | Página | Para quê |
 | --- | --- |
 | Painel | Saldo, receitas, despesas, gráfico por categoria e histórico de 12 meses |
-| Transações | Lista do mês com filtros, busca, parcelas e marcação de pago/pendente |
+| Transações | Lista do mês com filtros, busca, parcelas, edição (uma ou todas as parcelas) e pago/pendente |
 | Planejamento | Metas por categoria + botões para copiar metas e repetir contas fixas do mês anterior |
 | Cartões | Fatura de cada cartão, comparada com o mês passado |
 | Investimentos | Aportes, resgates, rendimentos, composição da carteira e evolução |
 | Objetivos | Quanto falta para cada meta e quanto guardar por mês |
-| Configurações | Contas, cartões, categorias, carteiras e acesso, importação de CSV e backup |
+| Configurações | Contas, cartões, categorias e carteiras (criar, editar, remover), acesso, importação de CSV e backup |
 
 Detalhes que resolvem dores da planilha:
 

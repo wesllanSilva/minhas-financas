@@ -3,6 +3,25 @@
 Versionamento semântico. A versão em vigor fica em `core/versao.py` e aparece
 na tela de login.
 
+## 0.4.0
+
+Editar em vez de excluir e refazer.
+
+- **Lançamento**: "Editar" no menu ⋯ de cada linha abre um diálogo já
+  preenchido. Se o lançamento tem parcelas ou repetições, pergunta se a
+  mudança vale só para ele ou para todos — no "todos", descrição, valor,
+  categoria, conta, cartão e observação mudam em cada um; data e pago/pendente
+  continuam como estão. Trocar o cartão recalcula a fatura de cada parcela.
+- **Categoria**: ✎ ao lado de cada uma em Configurações renomeia e troca a cor.
+  Reflete em todos os lançamentos que já a usavam.
+- **Conta**: nome, tipo e saldo inicial editáveis; remover só esconde, os
+  lançamentos continuam contando.
+- **Cartão**: apelido, banco, limite, fechamento e vencimento editáveis. Mudar
+  o dia de fechamento move cada compra para a fatura certa.
+- **Carteira**: o dono renomeia pelo ✎ em Carteiras e acesso.
+- Nome repetido (ignorando maiúsculas) em categoria, conta ou cartão é
+  recusado com aviso, em vez de estourar erro do banco.
+
 ## 0.3.1
 
 - `ferramentas/recolorir_categorias.py`: troca as cores das categorias criadas

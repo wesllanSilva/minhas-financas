@@ -578,6 +578,67 @@ def saldo_total() -> float:
     return inicial + entradas - saidas
 
 
+def saldo_por_conta() -> pd.DataFrame:
+    """Quanto há em cada conta ativa, negativo inclusive.
+
+    saldo = inicial + receitas pagas - despesas pagas fora do cartão. A mesma
+    regra do saldo total, só que aberta por conta. Lançamento pago sem conta
+    vira a linha "Sem conta", para a soma continuar batendo com o total.
+    """
+    ws = _ws()
+    colunas = ["id", "nome", "tipo", "saldo_inicial", "entradas", "saidas", "saldo"]
+    with get_session() as s:
+        contas = s.scalars(
+            select(Conta)
+            .where(Conta.workspace_id == ws, Conta.ativa.is_(True))
+            .order_by(Conta.nome)
+        ).all()
+
+        def por_conta(*cond):
+            return {
+                cid: _f(v)
+                for cid, v in s.execute(
+                    select(Transacao.conta_id, func.sum(Transacao.valor))
+                    .where(Transacao.workspace_id == ws, Transacao.pago.is_(True), *cond)
+                    .group_by(Transacao.conta_id)
+                ).all()
+            }
+
+        entradas = por_conta(Transacao.tipo == "receita")
+        saidas = por_conta(Transacao.tipo == "despesa", Transacao.cartao_id.is_(None))
+
+    linhas = [
+        {
+            "id": c.id, "nome": c.nome, "tipo": c.tipo, "saldo_inicial": _f(c.saldo_inicial),
+            "entradas": entradas.get(c.id, 0.0), "saidas": saidas.get(c.id, 0.0),
+            "saldo": _f(c.saldo_inicial) + entradas.get(c.id, 0.0) - saidas.get(c.id, 0.0),
+        }
+        for c in contas
+    ]
+    soltas_e, soltas_s = entradas.get(None, 0.0), saidas.get(None, 0.0)
+    if soltas_e or soltas_s:
+        linhas.append({
+            "id": None, "nome": "Sem conta", "tipo": "—", "saldo_inicial": 0.0,
+            "entradas": soltas_e, "saidas": soltas_s, "saldo": soltas_e - soltas_s,
+        })
+    return pd.DataFrame(linhas, columns=colunas)
+
+
+def por_categoria(competencia: dt.date, tipo: str) -> pd.DataFrame:
+    """Total do mês por categoria, com quanto já está pago. Maior primeiro."""
+    df = transacoes(competencia, tipo=tipo)
+    colunas = ["categoria", "cor", "total", "pago", "pendente", "itens"]
+    if df.empty:
+        return pd.DataFrame(columns=colunas)
+    df = df.assign(pago_v=df["valor"].where(df["pago"], 0.0))
+    g = (
+        df.groupby(["categoria", "cor"], as_index=False)
+        .agg(total=("valor", "sum"), pago=("pago_v", "sum"), itens=("id", "count"))
+    )
+    g["pendente"] = g["total"] - g["pago"]
+    return g.sort_values("total", ascending=False)[colunas].reset_index(drop=True)
+
+
 def serie_mensal(meses: int = 12, ate: dt.date | None = None) -> pd.DataFrame:
     """Receitas x despesas dos últimos N meses."""
     fim = ate or dt.date.today().replace(day=1)

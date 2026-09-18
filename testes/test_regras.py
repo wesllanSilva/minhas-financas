@@ -285,3 +285,48 @@ def test_exportar_traz_as_colunas_da_planilha(base):
         "categoria", "conta", "cartao", "pago", "parcela",
     ]
     assert len(export) == 1
+
+
+# --------------------------------------------------------------------------- #
+# Detalhes do painel
+# --------------------------------------------------------------------------- #
+
+
+def test_saldo_por_conta_abre_o_total_e_mostra_negativo(base):
+    repo.salvar_conta("Itaú", "Conta corrente", 100)
+    itau = int(repo.listar_contas().query("nome == 'Itaú'").iloc[0]["id"])
+    repo.salvar_transacao(
+        data=dt.date(2026, 3, 5), descricao="Salário", valor=3000, tipo="receita",
+        categoria_id=base["cat_receita"], conta_id=base["conta"],
+    )
+    repo.salvar_transacao(
+        data=dt.date(2026, 3, 6), descricao="Conta de luz", valor=250, tipo="despesa",
+        categoria_id=base["cat_despesa"], conta_id=itau,
+    )
+    df = repo.saldo_por_conta().set_index("nome")
+    assert df.loc["Conta corrente", "saldo"] == pytest.approx(3000)
+    assert df.loc["Itaú", "saldo"] == pytest.approx(-150)
+    assert repo.saldo_total() == pytest.approx(float(df["saldo"].sum()))
+
+
+def test_lancamento_pago_sem_conta_aparece_como_sem_conta(base):
+    repo.salvar_transacao(
+        data=dt.date(2026, 3, 5), descricao="Achado", valor=50, tipo="receita",
+        categoria_id=base["cat_receita"],
+    )
+    df = repo.saldo_por_conta().set_index("nome")
+    assert df.loc["Sem conta", "saldo"] == pytest.approx(50)
+
+
+def test_por_categoria_separa_pago_de_pendente(base):
+    repo.salvar_transacao(
+        data=dt.date(2026, 3, 5), descricao="A", valor=100, tipo="despesa",
+        categoria_id=base["cat_despesa"], conta_id=base["conta"], pago=True,
+    )
+    repo.salvar_transacao(
+        data=dt.date(2026, 3, 6), descricao="B", valor=40, tipo="despesa",
+        categoria_id=base["cat_despesa"], conta_id=base["conta"], pago=False,
+    )
+    linha = repo.por_categoria(MARCO, "despesa").iloc[0]
+    assert (linha["total"], linha["pago"], linha["pendente"], linha["itens"]) == (140, 100, 40, 2)
+    assert repo.por_categoria(MARCO, "receita").empty

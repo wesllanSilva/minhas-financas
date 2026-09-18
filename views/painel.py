@@ -14,16 +14,69 @@ saldo = repo.saldo_total()
 st.title("Painel")
 st.caption(repo.rotulo_mes(competencia))
 
-ui.painel(
+cor_saldo = ui.VIOLETA_BRILHO if saldo >= 0 else ui.VERMELHO
+cor_balanco = ui.CIANO if resumo["balanco"] >= 0 else ui.AMBAR
+aberto = ui.painel_interativo(
     [
-        ("Saldo em conta", ui.brl(saldo), ui.VIOLETA_BRILHO if saldo >= 0 else ui.VERMELHO, "Somando todas as contas"),
-        ("Receitas do mês", ui.brl(resumo["receitas"]), ui.VERDE, "Tudo que entrou"),
-        ("Despesas do mês", ui.brl(resumo["despesas"]), ui.VERMELHO,
+        ("saldo", "Saldo em conta", ui.brl(saldo), cor_saldo, "Somando todas as contas"),
+        ("receitas", "Receitas do mês", ui.brl(resumo["receitas"]), ui.VERDE, "Tudo que entrou"),
+        ("despesas", "Despesas do mês", ui.brl(resumo["despesas"]), ui.VERMELHO,
          f"{ui.brl(resumo['a_pagar'])} ainda em aberto"),
-        ("Balanço", ui.brl(resumo["balanco"]),
-         ui.CIANO if resumo["balanco"] >= 0 else ui.AMBAR, "Receitas menos despesas"),
+        ("balanco", "Balanço", ui.brl(resumo["balanco"]), cor_balanco, "Receitas menos despesas"),
     ]
 )
+
+# --------------------------------------------------------------------------- #
+# Detalhe do card aberto
+# --------------------------------------------------------------------------- #
+if aberto == "saldo":
+    contas = repo.saldo_por_conta()
+    linhas = "".join(
+        ui.linha_detalhe(
+            r.nome, ui.brl(r.saldo), ui.VERDE if r.saldo >= 0 else ui.VERMELHO,
+            sub=f"{r.tipo} · inicial {ui.brl(r.saldo_inicial)} + {ui.brl(r.entradas)} − {ui.brl(r.saidas)}",
+        )
+        for r in contas.itertuples()
+    ) or "<div class='linha'><div class='nome'>Nenhuma conta ativa.</div></div>"
+    ui.detalhe(
+        "Por conta", linhas, cor_saldo,
+        "Só o que já foi pago ou recebido. Compras no cartão entram na fatura, não aqui.",
+    )
+
+elif aberto in ("receitas", "despesas"):
+    tipo = "receita" if aberto == "receitas" else "despesa"
+    cor = ui.VERDE if tipo == "receita" else ui.VERMELHO
+    cats = repo.por_categoria(competencia, tipo)
+    if cats.empty:
+        linhas = f"<div class='linha'><div class='nome'>Nenhuma {tipo} neste mês.</div></div>"
+    else:
+        total = float(cats["total"].sum()) or 1.0
+        linhas = "".join(
+            ui.linha_detalhe(
+                r.categoria, ui.brl(r.total), cor, ponto=r.cor,
+                sub=(
+                    f"{r.total / total * 100:.0f}% · {r.itens} lançamento(s)"
+                    + (f" · {ui.brl(r.pendente)} em aberto" if r.pendente > 0.005 else "")
+                ),
+            )
+            for r in cats.itertuples()
+        )
+    ui.detalhe(f"{aberto.capitalize()} por categoria", linhas, cor)
+
+elif aberto == "balanco":
+    serie = repo.serie_mensal(4, ate=competencia)
+    linhas = "".join(
+        ui.linha_detalhe(
+            r.mes.capitalize(), ui.brl(r.saldo), ui.VERDE if r.saldo >= 0 else ui.VERMELHO,
+            sub=f"{ui.brl(r.receitas)} entrou · {ui.brl(r.despesas)} saiu",
+        )
+        for r in serie.sort_values("competencia", ascending=False).itertuples()
+    )
+    media = float(serie["saldo"].mean()) if not serie.empty else 0.0
+    ui.detalhe(
+        "Este mês e os três anteriores", linhas, cor_balanco,
+        f"Média dos quatro: {ui.brl(media)} por mês.",
+    )
 
 with st.expander("Lançar receita ou despesa", expanded=False):
     if formulario_lancamento("dash", data_padrao=competencia):

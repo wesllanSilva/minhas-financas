@@ -337,6 +337,53 @@ div[data-testid="stMetricValue"] {{
   background: radial-gradient(closest-side, var(--acento, var(--violet)), transparent);
   opacity: 0.09; pointer-events: none;
 }}
+/* Card clicável: o container tem classe st-key-<chave>; o botão dentro dele
+   vira uma camada invisível por cima do card inteiro. */
+[class*="st-key-ficha_"] {{ position: relative; }}
+[class*="st-key-ficha_"] .painel {{ margin: 0; }}
+/* O Streamlit envolve cada widget num stElementContainer com position:
+   relative — o absoluto precisa ser esse container, senão o overlay fica
+   preso numa caixa de altura zero embaixo do card. */
+[class*="st-key-ficha_"] [data-testid="stElementContainer"]:has(> .stButton) {{
+  position: absolute; inset: 0; margin: 0; z-index: 2; height: auto;
+}}
+[class*="st-key-ficha_"] .stButton {{ position: static; height: 100%; }}
+[class*="st-key-ficha_"] .stButton > button {{
+  width: 100%; height: 100%; min-height: 100%; opacity: 0; cursor: pointer;
+  background: none; border: none; box-shadow: none;
+}}
+[class*="st-key-ficha_"] .ficha {{ transition: transform 0.15s ease, box-shadow 0.15s ease; }}
+[class*="st-key-ficha_"]:hover .ficha {{
+  transform: translateY(-2px);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--acento, var(--violet));
+}}
+.ficha.resumo.ativa {{
+  box-shadow: 0 0 0 2px var(--acento, var(--violet)), 0 10px 28px rgba(0, 0, 0, 0.45);
+}}
+.ficha.resumo .abrir {{
+  position: absolute; right: 12px; top: 10px;
+  font-family: var(--font-mono); font-size: 0.66rem; letter-spacing: 0.1em;
+  color: var(--muted); opacity: 0.7;
+}}
+.detalhe {{
+  background: rgba(33, 33, 58, 0.55);
+  border: 1px solid var(--border); border-left: 3px solid var(--acento, var(--violet));
+  border-radius: 12px; padding: 14px 18px 8px; margin: -8px 0 22px;
+}}
+.detalhe .titulo {{
+  font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 8px;
+}}
+.detalhe .linha {{
+  display: flex; align-items: center; gap: 10px; padding: 7px 0;
+  border-bottom: 1px solid var(--line); font-size: 0.88rem;
+}}
+.detalhe .linha:last-child {{ border-bottom: none; }}
+.detalhe .linha .nome {{ flex: 1; }}
+.detalhe .linha .sub {{ font-size: 0.72rem; color: var(--muted); }}
+.detalhe .linha .ponto {{ width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }}
+.detalhe .rodape {{ font-size: 0.74rem; color: var(--muted); margin-top: 8px; }}
+
 .dinheiro {{
   font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 500;
 }}

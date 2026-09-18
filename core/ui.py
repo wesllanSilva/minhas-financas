@@ -245,6 +245,52 @@ def painel(fichas: list[tuple[str, str, str, str]]) -> None:
     st.markdown(f"<div class='painel'>{blocos}</div>", unsafe_allow_html=True)
 
 
+def painel_interativo(
+    fichas: list[tuple[str, str, str, str, str]], chave: str = "detalhe"
+) -> str | None:
+    """Cards de resumo clicáveis: (id, rótulo, valor, cor, nota).
+
+    Clicar abre o card; clicar de novo fecha. Devolve o id do card aberto.
+    Quem chama desenha o detalhe logo abaixo — o painel só cuida do clique.
+    """
+    aberto = st.session_state.get(chave)
+    colunas = st.columns(len(fichas))
+    for coluna, (id_, rotulo, valor, cor, nota) in zip(colunas, fichas):
+        with coluna, st.container(key=f"ficha_{id_}"):
+            ativa = " ativa" if aberto == id_ else ""
+            st.markdown(
+                f"<div class='painel'><div class='ficha resumo{ativa}' style='--acento:{cor}'>"
+                f"<span class='abrir'>{'fechar' if ativa else 'detalhes'}</span>"
+                f"<div class='rotulo'>{rotulo}</div>"
+                f"<div class='cifra' style='color:{cor}'>{valor}</div>"
+                f"<div class='nota'>{nota}</div></div></div>",
+                unsafe_allow_html=True,
+            )
+            if st.button(rotulo, key=f"btn_ficha_{id_}", width="stretch"):
+                st.session_state[chave] = None if aberto == id_ else id_
+                st.rerun()
+    return aberto
+
+
+def detalhe(titulo: str, linhas_html: str, cor: str, rodape: str = "") -> None:
+    """Painel que abre abaixo dos cards."""
+    fim = f"<div class='rodape'>{rodape}</div>" if rodape else ""
+    st.markdown(
+        f"<div class='detalhe' style='--acento:{cor}'><div class='titulo'>{titulo}</div>"
+        f"{linhas_html}{fim}</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def linha_detalhe(nome: str, valor: str, cor_valor: str, sub: str = "", ponto: str = "") -> str:
+    p = f"<span class='ponto' style='background:{ponto}'></span>" if ponto else ""
+    s = f"<div class='sub'>{sub}</div>" if sub else ""
+    return (
+        f"<div class='linha'>{p}<div class='nome'>{nome}{s}</div>"
+        f"<span class='dinheiro' style='color:{cor_valor}'>{valor}</span></div>"
+    )
+
+
 def barra(pct: float, cor: str = VERDE) -> str:
     pct = max(0.0, min(pct, 100.0))
     return f"<div class='trilho'><div style='width:{pct:.1f}%;background:{cor}'></div></div>"

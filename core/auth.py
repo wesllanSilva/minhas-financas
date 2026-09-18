@@ -179,6 +179,24 @@ def criar_workspace(nome: str, usuario_id: int) -> int:
         return ws.id
 
 
+def renomear_workspace(workspace_id: int, nome: str, solicitante_id: int) -> None:
+    """Só o dono renomeia. Membro convidado enxerga, mas a carteira não é dele."""
+    if not nome.strip():
+        raise ErroDeAuth("Dê um nome para a carteira.")
+    with get_session() as s:
+        dono = s.scalar(
+            select(Membro).where(
+                Membro.usuario_id == solicitante_id,
+                Membro.workspace_id == workspace_id,
+                Membro.papel == "dono",
+            )
+        )
+        if dono is None:
+            raise ErroDeAuth("Só o dono da carteira pode renomeá-la.")
+        s.get(Workspace, workspace_id).nome = nome.strip()
+        s.commit()
+
+
 def adicionar_membro(workspace_id: int, email: str, solicitante_id: int) -> None:
     """Dá a outro usuário acesso a uma carteira. Só o dono pode."""
     with get_session() as s:

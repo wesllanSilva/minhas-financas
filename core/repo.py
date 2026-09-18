@@ -166,12 +166,40 @@ def listar_categorias(tipo: str | None = None, apenas_ativas: bool = True) -> pd
     )
 
 
+class NomeRepetido(ValueError):
+    """Já existe um registro com esse nome nesta carteira."""
+
+
+def _exigir_nome_livre(s, Model, nome: str, id_: int | None, rotulo: str, *extra) -> str:
+    """Devolve o nome limpo ou levanta NomeRepetido/ValueError.
+
+    A comparação ignora caixa: "nubank" e "Nubank" seriam a mesma conta para
+    quem usa, e o índice único do banco não sabe disso.
+    """
+    nome = nome.strip()
+    if not nome:
+        raise ValueError(f"Dê um nome ao {rotulo}." if rotulo[-1] != "a" else f"Dê um nome à {rotulo}.")
+    repetido = s.scalar(
+        select(Model).where(
+            Model.workspace_id == _ws(),
+            func.lower(Model.nome) == nome.lower(),
+            Model.id != (id_ or 0),
+            *extra,
+        )
+    )
+    if repetido is not None:
+        raise NomeRepetido(f'Já existe {rotulo} "{repetido.nome}".')
+    return nome
+
+
 def salvar_categoria(nome: str, tipo: str, cor: str, id_: int | None = None) -> None:
+    """Cria ou renomeia. Renomear reflete nos lançamentos: eles guardam o id."""
     with get_session() as s:
+        nome = _exigir_nome_livre(s, Categoria, nome, id_, "categoria", Categoria.tipo == tipo)
         obj = _buscar(s, Categoria, id_) if id_ else Categoria(workspace_id=_ws())
         if obj is None:
             return
-        obj.nome, obj.tipo, obj.cor = nome.strip(), tipo, cor
+        obj.nome, obj.tipo, obj.cor = nome, tipo, cor
         s.add(obj)
         s.commit()
 
@@ -201,12 +229,22 @@ def listar_contas(apenas_ativas: bool = True) -> pd.DataFrame:
 
 def salvar_conta(nome: str, tipo: str, saldo_inicial: float, id_: int | None = None) -> None:
     with get_session() as s:
+        nome = _exigir_nome_livre(s, Conta, nome, id_, "conta")
         obj = _buscar(s, Conta, id_) if id_ else Conta(workspace_id=_ws())
         if obj is None:
             return
-        obj.nome, obj.tipo, obj.saldo_inicial = nome.strip(), tipo, saldo_inicial
+        obj.nome, obj.tipo, obj.saldo_inicial = nome, tipo, saldo_inicial
         s.add(obj)
         s.commit()
+
+
+def arquivar_conta(id_: int) -> None:
+    """Esconde a conta. Os lançamentos dela continuam existindo e contando."""
+    with get_session() as s:
+        obj = _buscar(s, Conta, id_)
+        if obj:
+            obj.ativa = False
+            s.commit()
 
 
 def listar_cartoes(apenas_ativos: bool = True) -> pd.DataFrame:
@@ -240,12 +278,23 @@ def salvar_cartao(
     id_: int | None = None,
 ) -> None:
     with get_session() as s:
+        nome = _exigir_nome_livre(s, Cartao, nome, id_, "cartão")
         obj = _buscar(s, Cartao, id_) if id_ else Cartao(workspace_id=_ws())
         if obj is None:
             return
-        obj.nome, obj.banco, obj.limite = nome.strip(), banco.strip(), limite
+        fechamento_mudou = bool(id_) and obj.dia_fechamento != dia_fechamento
+        obj.nome, obj.banco, obj.limite = nome, banco.strip(), limite
         obj.dia_fechamento, obj.dia_vencimento = dia_fechamento, dia_vencimento
         s.add(obj)
+        if fechamento_mudou:
+            # O dia de fechamento decide em que fatura cada compra cai. Mudou,
+            # cada lançamento do cartão precisa reencontrar o seu mês.
+            for t in s.scalars(
+                select(Transacao).where(
+                    Transacao.workspace_id == _ws(), Transacao.cartao_id == obj.id
+                )
+            ).all():
+                t.competencia = competencia_de(t.data, obj)
         s.commit()
 
 
@@ -348,6 +397,84 @@ def excluir_transacao(id_: int, grupo_inteiro: bool = False) -> None:
         else:
             s.delete(obj)
         s.commit()
+
+
+def obter_transacao(id_: int) -> dict | None:
+    """Um lançamento pronto para preencher o formulário de edição."""
+    with get_session() as s:
+        t = _buscar(s, Transacao, id_)
+        if t is None:
+            return None
+        tamanho_grupo = (
+            s.scalar(
+                select(func.count()).select_from(Transacao).where(
+                    Transacao.grupo == t.grupo, Transacao.workspace_id == _ws()
+                )
+            )
+            if t.grupo
+            else 1
+        )
+        return {
+            "id": t.id,
+            "data": t.data,
+            "descricao": t.descricao,
+            "valor": _f(t.valor),
+            "tipo": t.tipo,
+            "categoria_id": t.categoria_id,
+            "conta_id": t.conta_id,
+            "cartao_id": t.cartao_id,
+            "pago": bool(t.pago),
+            "observacao": t.observacao or "",
+            "grupo": t.grupo,
+            "parcela_num": t.parcela_num,
+            "parcela_total": t.parcela_total,
+            "tamanho_grupo": int(tamanho_grupo),
+        }
+
+
+def editar_grupo(
+    id_: int,
+    *,
+    descricao: str,
+    valor: float,
+    tipo: str,
+    categoria_id: int | None,
+    conta_id: int | None,
+    cartao_id: int | None,
+    observacao: str = "",
+) -> int:
+    """Aplica a mesma mudança a todas as parcelas/repetições do lançamento.
+
+    Data e situação de pago ficam como estão em cada linha — são o que
+    distingue uma parcela da outra. Trocar o cartão recalcula a competência de
+    cada uma, porque o dia de fechamento pode mudar o mês da fatura.
+    Devolve quantos lançamentos foram alterados.
+    """
+    with get_session() as s:
+        alvo = _buscar(s, Transacao, id_)
+        if alvo is None:
+            return 0
+        categoria_id = _existe(s, Categoria, categoria_id)
+        conta_id = _existe(s, Conta, conta_id)
+        cartao = _buscar(s, Cartao, cartao_id)
+        cartao_id = cartao.id if cartao else None
+
+        if alvo.grupo:
+            linhas = s.scalars(
+                select(Transacao).where(
+                    Transacao.grupo == alvo.grupo, Transacao.workspace_id == _ws()
+                )
+            ).all()
+        else:
+            linhas = [alvo]
+
+        for t in linhas:
+            t.descricao, t.valor, t.tipo = descricao.strip(), valor, tipo
+            t.categoria_id, t.conta_id, t.cartao_id = categoria_id, conta_id, cartao_id
+            t.observacao = observacao
+            t.competencia = competencia_de(t.data, cartao)
+        s.commit()
+        return len(linhas)
 
 
 def alternar_pago(id_: int) -> None:

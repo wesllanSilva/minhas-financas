@@ -1,4 +1,7 @@
-streamlit>=1.49
+# O piso do Streamlit não é decorativo: o app usa st.container(key=...),
+# st.dialog, st.logo e width="stretch". Com uma versão anterior o app sobe e
+# quebra só na tela que usa o recurso — veja testes/test_ambiente.py.
+streamlit>=1.63
 SQLAlchemy>=2.0
 pandas>=2.2
 plotly>=5.24

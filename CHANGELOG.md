@@ -3,6 +3,13 @@
 Versionamento semântico. A versão em vigor fica em `core/versao.py` e aparece
 na tela de login.
 
+## 0.5.0
+
+- Os quatro cards do Painel abrem ao clique. **Saldo em conta** mostra cada
+  conta (negativo inclusive) e como o número foi montado; **Receitas** e
+  **Despesas** abrem por categoria, com o que ainda está em aberto; **Balanço**
+  compara com os três meses anteriores. Clicar de novo fecha.
+
 ## 0.4.0
 
 Editar em vez de excluir e refazer.

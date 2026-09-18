@@ -163,6 +163,7 @@ core/versao.py            versão mostrada na tela de login
 views/                    uma tela por arquivo
 static/img/               logo e fundo do login (entram na página como data URI)
 ferramentas/              migração de banco e gerador do fundo do login
+docs/                     guias: agente de IA, bot do Telegram, deploy no Render e no Oracle
 testes/                   suíte pytest
 ```
 

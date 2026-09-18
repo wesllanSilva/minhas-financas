@@ -3,6 +3,14 @@
 Versionamento semântico. A versão em vigor fica em `core/versao.py` e aparece
 na tela de login.
 
+## 0.5.1
+
+- Fixa o piso do Streamlit em 1.63 no `requirements.txt`. O app usa
+  `st.container(key=...)`, `st.dialog`, `st.logo` e `width="stretch"`; com o
+  piso anterior (1.49) a nuvem podia instalar uma versão sem esses recursos, e
+  a falha só aparecia na tela que os usa. `testes/test_ambiente.py` passa a
+  checar isso localmente.
+
 ## 0.5.0
 
 - Os quatro cards do Painel abrem ao clique. **Saldo em conta** mostra cada

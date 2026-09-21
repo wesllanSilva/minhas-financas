@@ -3,6 +3,15 @@
 Versionamento semântico. A versão em vigor fica em `core/versao.py` e aparece
 na tela de login.
 
+## 0.6.0
+
+- **Marcar pendentes como pagas em lote**, em Transações. O botão age sobre o
+  que os filtros deixaram na tela — Forma = Nubank, Situação = Pendentes — e
+  pede confirmação mostrando quantos lançamentos e quanto. Caso típico: pagou a
+  fatura, tudo do cartão naquele mês vira pago de uma vez.
+- Filtro **Situação** (Todas / Pendentes / Pagas) na lista de transações, e o
+  resumo passa a mostrar quantos estão pendentes e quanto somam.
+
 ## 0.5.1
 
 - Fixa o piso do Streamlit em 1.63 no `requirements.txt`. O app usa

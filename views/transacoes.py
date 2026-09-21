@@ -40,13 +40,14 @@ if df.empty:
 # --------------------------------------------------------------------------- #
 # Filtros
 # --------------------------------------------------------------------------- #
-f1, f2, f3, f4 = st.columns([1.2, 1.4, 1.4, 2])
+f1, f2, f3, f4, f5 = st.columns([1.1, 1.4, 1.4, 1.1, 1.8])
 tipo_filtro = f1.selectbox("Tipo", ["Todos", "Despesas", "Receitas"])
 cat_filtro = f2.multiselect("Categoria", sorted(df["categoria"].unique()))
 pagamento_filtro = f3.selectbox(
     "Forma", ["Todas", "Conta/dinheiro"] + sorted(c for c in df["cartao"].unique() if c)
 )
-busca = f4.text_input("Buscar na descrição", "")
+situacao_filtro = f4.selectbox("Situação", ["Todas", "Pendentes", "Pagas"])
+busca = f5.text_input("Buscar na descrição", "")
 
 filtrado = df.copy()
 if tipo_filtro != "Todos":
@@ -57,15 +58,35 @@ if pagamento_filtro == "Conta/dinheiro":
     filtrado = filtrado[filtrado.cartao == ""]
 elif pagamento_filtro != "Todas":
     filtrado = filtrado[filtrado.cartao == pagamento_filtro]
+if situacao_filtro == "Pendentes":
+    filtrado = filtrado[~filtrado.pago]
+elif situacao_filtro == "Pagas":
+    filtrado = filtrado[filtrado.pago]
 if busca.strip():
     filtrado = filtrado[filtrado.descricao.str.contains(busca.strip(), case=False, na=False)]
 
-st.markdown(
+pendentes = filtrado[~filtrado.pago]
+r1, r2 = st.columns([3, 1.6])
+r1.markdown(
     f"<div style='color:{ui.CINZA};font-size:.84rem;margin:6px 0 2px 0'>"
     f"{len(filtrado)} lançamento(s) · despesas {ui.brl(filtrado.loc[filtrado.tipo=='despesa','valor'].sum())}"
-    f" · receitas {ui.brl(filtrado.loc[filtrado.tipo=='receita','valor'].sum())}</div>",
+    f" · receitas {ui.brl(filtrado.loc[filtrado.tipo=='receita','valor'].sum())}"
+    + (f" · <b style='color:{ui.AMBAR}'>{len(pendentes)} pendente(s), {ui.brl(pendentes['valor'].sum())}</b>" if not pendentes.empty else "")
+    + "</div>",
     unsafe_allow_html=True,
 )
+# Pagou a fatura? Tudo que está na tela e ainda pendente vira pago de uma vez.
+# Age só sobre o que os filtros deixaram passar — Forma = Nubank já é a seleção.
+if not pendentes.empty:
+    with r2.popover(f"Marcar {len(pendentes)} pendente(s) como pagas", width="stretch"):
+        st.caption(
+            f"Vai marcar como pago tudo que está listado e ainda pendente: "
+            f"{len(pendentes)} lançamento(s), {ui.brl(pendentes['valor'].sum())}."
+        )
+        if st.button("Confirmar", type="primary", key="pagar_todos", width="stretch"):
+            n = repo.marcar_pagos(pendentes["id"].tolist(), pago=True)
+            st.toast(f"{n} lançamento(s) marcados como pagos.")
+            st.rerun()
 
 # --------------------------------------------------------------------------- #
 # Lista

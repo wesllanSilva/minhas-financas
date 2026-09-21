@@ -225,3 +225,44 @@ def test_renomear_carteira_so_pelo_dono(usuario, emails):
     with pytest.raises(auth.ErroDeAuth):
         auth.renomear_workspace(ws, "Invadida", outro)
     assert auth.workspaces_de(uid)[0]["nome"] == "Casa"
+
+
+# --------------------------------------------------------------------------- #
+# Marcar em lote
+# --------------------------------------------------------------------------- #
+
+
+def _tres_pendentes(base):
+    for d, desc in ((5, "A"), (6, "B"), (7, "C")):
+        repo.salvar_transacao(
+            data=dt.date(2026, 3, d), descricao=desc, valor=10, tipo="despesa",
+            categoria_id=base["cat_despesa"], cartao_id=base["cartao"], pago=False,
+        )
+    return [int(i) for i in repo.transacoes(MARCO)["id"]]
+
+
+def test_marcar_pagos_em_lote(base):
+    ids = _tres_pendentes(base)
+    assert repo.marcar_pagos(ids) == 3
+    assert repo.transacoes(MARCO)["pago"].all()
+
+
+def test_marcar_pagos_conta_so_quem_mudou(base):
+    ids = _tres_pendentes(base)
+    repo.alternar_pago(ids[0])              # um já pago
+    assert repo.marcar_pagos(ids) == 2
+    assert repo.marcar_pagos(ids) == 0      # idempotente
+
+
+def test_marcar_pagos_ignora_id_de_outra_carteira(base, emails):
+    from core import auth
+
+    ids = _tres_pendentes(base)
+    outro = auth.criar_usuario(emails(), "Outra", "senha-de-teste-123")
+    with escopo.usando(auth.workspaces_de(outro)[0]["id"]):
+        assert repo.marcar_pagos(ids) == 0
+    assert not repo.transacoes(MARCO)["pago"].any()
+
+
+def test_marcar_pagos_lista_vazia(base):
+    assert repo.marcar_pagos([]) == 0

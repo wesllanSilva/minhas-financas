@@ -477,6 +477,29 @@ def editar_grupo(
         return len(linhas)
 
 
+def marcar_pagos(ids: list[int], pago: bool = True) -> int:
+    """Marca vários lançamentos de uma vez. Devolve quantos mudaram.
+
+    Caso típico: a fatura foi paga, então toda compra do cartão naquele mês
+    vira paga. Só alcança lançamentos da carteira ativa — id de fora é ignorado.
+    """
+    ids = [int(i) for i in ids]
+    if not ids:
+        return 0
+    with get_session() as s:
+        linhas = s.scalars(
+            select(Transacao).where(
+                Transacao.workspace_id == _ws(),
+                Transacao.id.in_(ids),
+                Transacao.pago.is_(not pago),
+            )
+        ).all()
+        for t in linhas:
+            t.pago = pago
+        s.commit()
+        return len(linhas)
+
+
 def alternar_pago(id_: int) -> None:
     with get_session() as s:
         obj = _buscar(s, Transacao, id_)

@@ -8,20 +8,35 @@ from core import repo, ui
 from core.forms import formulario_lancamento
 
 competencia = ui.seletor_mes()
+anterior = repo.somar_meses(competencia, -1)
 resumo = repo.resumo_mes(competencia)
-saldo = repo.saldo_total()
+saldo = repo.saldo_total(competencia)
+saldo_ant = repo.saldo_total(anterior)
 
 st.title("Painel")
 st.caption(repo.rotulo_mes(competencia))
 
 cor_saldo = ui.VIOLETA_BRILHO if saldo >= 0 else ui.VERMELHO
 cor_balanco = ui.CIANO if resumo["balanco"] >= 0 else ui.AMBAR
+
+sub_saldo = (
+    f"Sobrou do mês anterior: {ui.brl(saldo_ant)}"
+    if saldo_ant != 0.0 else "Somando todas as contas"
+)
+sub_receitas = (
+    f"{ui.brl(resumo['a_receber'])} a receber (previsto)"
+    if resumo.get("a_receber", 0.0) > 0.005 else "Tudo que entrou"
+)
+sub_despesas = (
+    f"{ui.brl(resumo['a_pagar'])} ainda em aberto"
+    if resumo.get("a_pagar", 0.0) > 0.005 else "Tudo que saiu"
+)
+
 aberto = ui.painel_interativo(
     [
-        ("saldo", "Saldo em conta", ui.brl(saldo), cor_saldo, "Somando todas as contas"),
-        ("receitas", "Receitas do mês", ui.brl(resumo["receitas"]), ui.VERDE, "Tudo que entrou"),
-        ("despesas", "Despesas do mês", ui.brl(resumo["despesas"]), ui.VERMELHO,
-         f"{ui.brl(resumo['a_pagar'])} ainda em aberto"),
+        ("saldo", "Saldo em conta", ui.brl(saldo), cor_saldo, sub_saldo),
+        ("receitas", "Receitas do mês", ui.brl(resumo["receitas"]), ui.VERDE, sub_receitas),
+        ("despesas", "Despesas do mês", ui.brl(resumo["despesas"]), ui.VERMELHO, sub_despesas),
         ("balanco", "Balanço", ui.brl(resumo["balanco"]), cor_balanco, "Receitas menos despesas"),
     ]
 )
@@ -30,8 +45,14 @@ aberto = ui.painel_interativo(
 # Detalhe do card aberto
 # --------------------------------------------------------------------------- #
 if aberto == "saldo":
-    contas = repo.saldo_por_conta()
-    linhas = "".join(
+    contas = repo.saldo_por_conta(competencia)
+    resumo_mes_ant = (
+        f"<div class='linha' style='opacity:0.95;padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid rgba(255,255,255,0.08)'>"
+        f"<div class='nome'><strong>Sobrou de {repo.rotulo_mes(anterior)}:</strong> {ui.brl(saldo_ant)}</div>"
+        f"<div class='sub'>No mês atual: +{ui.brl(resumo.get('receitas_recebidas', 0.0))} recebidos &nbsp;·&nbsp; −{ui.brl(resumo.get('despesas_pagas', 0.0))} pagos</div>"
+        f"</div>"
+    )
+    linhas = resumo_mes_ant + "".join(
         ui.linha_detalhe(
             r.nome, ui.brl(r.saldo), ui.VERDE if r.saldo >= 0 else ui.VERMELHO,
             sub=f"{r.tipo} · inicial {ui.brl(r.saldo_inicial)} + {ui.brl(r.entradas)} − {ui.brl(r.saidas)}",
@@ -40,7 +61,7 @@ if aberto == "saldo":
     ) or "<div class='linha'><div class='nome'>Nenhuma conta ativa.</div></div>"
     ui.detalhe(
         "Por conta", linhas, cor_saldo,
-        "Só o que já foi pago ou recebido. Compras no cartão entram na fatura, não aqui.",
+        "Saldo acumulado até o mês selecionado (considera receitas e despesas pagas, inclusive compras e faturas de cartão pagas).",
     )
 
 elif aberto in ("receitas", "despesas"):

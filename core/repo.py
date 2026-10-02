@@ -555,12 +555,17 @@ def transacoes(
 def resumo_mes(competencia: dt.date) -> dict:
     df = transacoes(competencia)
     receitas = df.loc[df.tipo == "receita", "valor"].sum() if not df.empty else 0.0
+    recebidas = (
+        df.loc[(df.tipo == "receita") & df.pago, "valor"].sum() if not df.empty else 0.0
+    )
     despesas = df.loc[df.tipo == "despesa", "valor"].sum() if not df.empty else 0.0
     pagas = (
         df.loc[(df.tipo == "despesa") & df.pago, "valor"].sum() if not df.empty else 0.0
     )
     return {
         "receitas": float(receitas),
+        "receitas_recebidas": float(recebidas),
+        "a_receber": float(receitas - recebidas),
         "despesas": float(despesas),
         "despesas_pagas": float(pagas),
         "a_pagar": float(despesas - pagas),
@@ -568,8 +573,11 @@ def resumo_mes(competencia: dt.date) -> dict:
     }
 
 
-def saldo_total() -> float:
-    """Saldo em conta: saldo inicial + receitas pagas - despesas pagas (fora cartão)."""
+def saldo_total(ate_competencia: dt.date | None = None) -> float:
+    """Saldo em conta: saldo inicial + receitas pagas - despesas pagas.
+    
+    Se `ate_competencia` for informado, limita os lançamentos até o mês fornecido.
+    """
     ws = _ws()
     with get_session() as s:
         inicial = _f(
@@ -579,33 +587,28 @@ def saldo_total() -> float:
                 )
             )
         )
-        entradas = _f(
-            s.scalar(
-                select(func.sum(Transacao.valor)).where(
-                    Transacao.workspace_id == ws,
-                    Transacao.tipo == "receita",
-                    Transacao.pago.is_(True),
-                )
-            )
+        q_ent = select(func.sum(Transacao.valor)).where(
+            Transacao.workspace_id == ws,
+            Transacao.tipo == "receita",
+            Transacao.pago.is_(True),
         )
-        saidas = _f(
-            s.scalar(
-                select(func.sum(Transacao.valor)).where(
-                    Transacao.workspace_id == ws,
-                    Transacao.tipo == "despesa",
-                    Transacao.pago.is_(True),
-                    Transacao.cartao_id.is_(None),
-                )
-            )
+        q_sai = select(func.sum(Transacao.valor)).where(
+            Transacao.workspace_id == ws,
+            Transacao.tipo == "despesa",
+            Transacao.pago.is_(True),
         )
+        if ate_competencia:
+            q_ent = q_ent.where(Transacao.competencia <= ate_competencia)
+            q_sai = q_sai.where(Transacao.competencia <= ate_competencia)
+        entradas = _f(s.scalar(q_ent))
+        saidas = _f(s.scalar(q_sai))
     return inicial + entradas - saidas
 
 
-def saldo_por_conta() -> pd.DataFrame:
+def saldo_por_conta(ate_competencia: dt.date | None = None) -> pd.DataFrame:
     """Quanto há em cada conta ativa, negativo inclusive.
 
-    saldo = inicial + receitas pagas - despesas pagas fora do cartão. A mesma
-    regra do saldo total, só que aberta por conta. Lançamento pago sem conta
+    saldo = inicial + receitas pagas - despesas pagas. Lançamento pago sem conta
     vira a linha "Sem conta", para a soma continuar batendo com o total.
     """
     ws = _ws()
@@ -618,17 +621,19 @@ def saldo_por_conta() -> pd.DataFrame:
         ).all()
 
         def por_conta(*cond):
+            q = (
+                select(Transacao.conta_id, func.sum(Transacao.valor))
+                .where(Transacao.workspace_id == ws, Transacao.pago.is_(True), *cond)
+            )
+            if ate_competencia:
+                q = q.where(Transacao.competencia <= ate_competencia)
             return {
                 cid: _f(v)
-                for cid, v in s.execute(
-                    select(Transacao.conta_id, func.sum(Transacao.valor))
-                    .where(Transacao.workspace_id == ws, Transacao.pago.is_(True), *cond)
-                    .group_by(Transacao.conta_id)
-                ).all()
+                for cid, v in s.execute(q.group_by(Transacao.conta_id)).all()
             }
 
         entradas = por_conta(Transacao.tipo == "receita")
-        saidas = por_conta(Transacao.tipo == "despesa", Transacao.cartao_id.is_(None))
+        saidas = por_conta(Transacao.tipo == "despesa")
 
     linhas = [
         {

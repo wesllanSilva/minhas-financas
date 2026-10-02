@@ -139,9 +139,14 @@ def test_saldo_ignora_despesa_no_cartao(base):
     )
     repo.salvar_transacao(
         data=dt.date(2026, 3, 6), descricao="Jantar", valor=200, tipo="despesa",
-        categoria_id=base["cat_despesa"], cartao_id=base["cartao"], pago=True,
+        categoria_id=base["cat_despesa"], cartao_id=base["cartao"], pago=False,
     )
     assert repo.saldo_total() == pytest.approx(5000)
+    repo.salvar_transacao(
+        data=dt.date(2026, 3, 10), descricao="Cinema", valor=100, tipo="despesa",
+        categoria_id=base["cat_despesa"], cartao_id=base["cartao"], conta_id=base["conta"], pago=True,
+    )
+    assert repo.saldo_total() == pytest.approx(4900)
 
 
 def test_serie_mensal_devolve_uma_linha_por_mes(base):

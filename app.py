@@ -4,9 +4,15 @@ Rode local com:  streamlit run app.py
 """
 from __future__ import annotations
 
+import importlib
 import streamlit as st
 
-from core import ui
+from core import repo, ui
+
+try:
+    importlib.reload(repo)
+except Exception:
+    pass
 
 ui.configurar_pagina("Painel")
 

@@ -7,11 +7,20 @@ import streamlit as st
 from core import repo, ui
 from core.forms import formulario_lancamento
 
+import importlib
+
 competencia = ui.seletor_mes()
 anterior = repo.somar_meses(competencia, -1)
-resumo = repo.resumo_mes(competencia)
-saldo = repo.saldo_total(competencia)
-saldo_ant = repo.saldo_total(anterior)
+
+try:
+    resumo = repo.resumo_mes(competencia)
+    saldo = repo.saldo_total(competencia)
+    saldo_ant = repo.saldo_total(anterior)
+except TypeError:
+    importlib.reload(repo)
+    resumo = repo.resumo_mes(competencia)
+    saldo = repo.saldo_total(competencia)
+    saldo_ant = repo.saldo_total(anterior)
 
 st.title("Painel")
 st.caption(repo.rotulo_mes(competencia))
@@ -45,7 +54,11 @@ aberto = ui.painel_interativo(
 # Detalhe do card aberto
 # --------------------------------------------------------------------------- #
 if aberto == "saldo":
-    contas = repo.saldo_por_conta(competencia)
+    try:
+        contas = repo.saldo_por_conta(competencia)
+    except TypeError:
+        importlib.reload(repo)
+        contas = repo.saldo_por_conta(competencia)
     resumo_mes_ant = (
         f"<div class='linha' style='opacity:0.95;padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid rgba(255,255,255,0.08)'>"
         f"<div class='nome'><strong>Sobrou de {repo.rotulo_mes(anterior)}:</strong> {ui.brl(saldo_ant)}</div>"
